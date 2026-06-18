@@ -20,6 +20,14 @@ from deimos.tools.registry import registry
 # Project root = the folder that contains the `deimos` package (…/deimos).
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# Standing instructions prepended to every Claude Code run, to lift build
+# quality regardless of project type. The user's own request follows.
+QUALITY_PREAMBLE = (
+    "Build to a production-quality standard. Follow any CLAUDE.md in this "
+    "project. If anything is ambiguous, make strong, modern default choices "
+    "rather than asking. Request: "
+)
+
 
 def _resolve_project(project_path: str) -> Path:
     if not project_path or project_path.lower() in {"self", "deimos", "yourself"}:
@@ -77,9 +85,10 @@ def run_claude_code(instruction: str, project_path: str = "self") -> str:
     snapshot = _snapshot(cwd)
     snap_note = f" Snapshot {snapshot[:8]} saved (undo: git -C {cwd} reset --hard {snapshot[:8]})." if snapshot else ""
 
+    full_instruction = QUALITY_PREAMBLE + instruction
     try:
         result = subprocess.run(
-            ["claude", "-p", instruction, "--dangerously-skip-permissions"],
+            ["claude", "-p", full_instruction, "--dangerously-skip-permissions"],
             cwd=str(cwd),
             capture_output=True,
             text=True,

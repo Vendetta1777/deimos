@@ -12,10 +12,25 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 from deimos.config import CONFIG
+
+
+def _find_piper() -> str | None:
+    """Locate the piper binary without depending on an activated venv.
+
+    Prefer the piper that lives next to the running interpreter (i.e. this
+    venv's own bin/piper) — that works even when launched with a minimal PATH,
+    e.g. from the Deimos.app launcher. Fall back to whatever is on PATH.
+    Returns the full path to the binary, or None if not found.
+    """
+    candidate = Path(sys.executable).parent / "piper"
+    if candidate.exists():
+        return str(candidate)
+    return shutil.which("piper")
 
 
 def _available_say_voices() -> list[tuple[str, str]]:
@@ -99,8 +114,10 @@ def _choose_say_voice() -> str | None:
 class TextToSpeech:
     def __init__(self) -> None:
         model = Path(CONFIG.piper_model).expanduser()
-        self.piper_ready = bool(shutil.which("piper")) and model.exists()
+        self.piper_bin = _find_piper()
         self.model_path = str(model)
+        # Ready only if BOTH the resolved binary and the model file exist.
+        self.piper_ready = bool(self.piper_bin) and model.exists()
         self.say_voice = _choose_say_voice()
 
     def speak(self, text: str) -> None:
@@ -120,7 +137,7 @@ class TextToSpeech:
         try:
             subprocess.run(
                 [
-                    "piper",
+                    self.piper_bin,
                     "--model", self.model_path,
                     "--length-scale", str(CONFIG.piper_length_scale),
                     "--sentence-silence", str(CONFIG.piper_sentence_silence),

@@ -32,6 +32,9 @@ class Config:
         "project, call the run_claude_code tool with their full request as the "
         "instruction. Use project_path 'self' when they ask you to change "
         "yourself. Briefly tell them what you set in motion. "
+        "When calling run_claude_code, pass the user's full, exact request as "
+        "the instruction — do not summarize or shorten it. If the request is "
+        "vague, expand it into a clear, detailed spec before passing it. "
         "You can also search the web, check the weather, open web pages, report "
         "this Mac's battery/memory/disk, set the volume, read and write the "
         "clipboard, take and read notes, set timers, show notifications, do "
@@ -74,17 +77,20 @@ class Config:
     tts_rate: int = 178              # words per minute (calmer pace)
 
     # Piper: cinematic local neural voice. If this model file exists and the
-    # `piper` command is installed, Deimos uses it (see README). en_GB-alan is a
-    # deep, natural British voice.
-    piper_model: str = "~/deimos/voices/en_GB-alan-medium.onnx"
+    # `piper` command is installed, Deimos uses it (see README). en_US-ryan-high
+    # is a smooth, deep, high-quality US voice.
+    piper_model: str = "/Users/shrinivas46608/deimos/voices/en_US-ryan-high.onnx"
+    # Fallback option (deep British, medium quality):
+    #   "~/deimos/voices/en_GB-alan-medium.onnx"
     # Pacing makes Piper sound more human: >1.0 is slower/calmer; sentence
-    # silence adds a natural pause between sentences.
-    piper_length_scale: float = 1.08
+    # silence adds a natural pause between sentences. The high-quality model
+    # sounds natural at full speed, so 1.0.
+    piper_length_scale: float = 1.0
     piper_sentence_silence: float = 0.3
 
     # --- Claude Code tool (autonomous coding by voice) ---
     # Folder that project names are resolved against (e.g. "trading-game").
-    projects_dir: str = "~"
+    projects_dir: str = "~/deimos-projects"
     # How long a single Claude Code run may take before we give up (seconds).
     code_timeout: int = 600
     # Auto git-snapshot a project before editing it, so any run is undoable.
