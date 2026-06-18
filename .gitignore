@@ -1,0 +1,21 @@
+# Python virtual environment (large, machine-specific)
+.venv/
+venv/
+
+# Bytecode / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Downloaded neural voice models (large binaries; see README to fetch)
+voices/
+*.onnx
+*.onnx.json
+
+# OS / editor cruft
+.DS_Store
+.vscode/
+*.log
+
+# Jarvis runtime data lives in ~/.jarvis (outside the repo) — never commit it.
