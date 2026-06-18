@@ -17,6 +17,11 @@ class Config:
     # Keep the model resident in memory between requests (-1 = never unload),
     # so it doesn't pay model-reload latency on each turn.
     keep_alive: int = -1
+    # A larger model used ONLY to compose detailed build specs for Claude Code
+    # (not for everyday chat), so coding quality is high without slowing chat.
+    coder_model: str = "qwen2.5:7b"
+    # Unload the coder model after it's idle, to free RAM on 16 GB machines.
+    coder_keep_alive: str = "5m"
     system_prompt: str = (
         "You are Deimos, a concise, helpful, personal voice assistant with a "
         "calm, refined manner. Keep spoken replies short and natural, one or "

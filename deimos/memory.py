@@ -30,6 +30,12 @@ class Memory:
             "CREATE TABLE IF NOT EXISTS facts "
             "(id INTEGER PRIMARY KEY, ts REAL, fact TEXT UNIQUE)"
         )
+        # Simple key/value store for small bits of working state (e.g. the
+        # currently active project, so the user can iterate by voice).
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS state "
+            "(key TEXT PRIMARY KEY, value TEXT, ts REAL)"
+        )
         self.db.commit()
 
     def log(self, role: str, text: str) -> None:
@@ -66,6 +72,27 @@ class Memory:
 
     def turn_count(self) -> int:
         return self.db.execute("SELECT COUNT(*) FROM turns").fetchone()[0]
+
+    # --- small key/value working state ---
+    def set_state(self, key: str, value: str) -> None:
+        self.db.execute(
+            "INSERT INTO state (key, value, ts) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, ts = excluded.ts",
+            (key, str(value), time.time()),
+        )
+        self.db.commit()
+
+    def get_state(self, key: str, default: str | None = None) -> str | None:
+        row = self.db.execute(
+            "SELECT value FROM state WHERE key = ?", (key,)
+        ).fetchone()
+        return row[0] if row else default
+
+    def set_active_project(self, path: str) -> None:
+        self.set_state("active_project", str(path))
+
+    def get_active_project(self) -> str | None:
+        return self.get_state("active_project")
 
 
 memory = Memory()

@@ -7,6 +7,8 @@ exchange to long-term memory.
 
 Targets a recent ollama python client (>= 0.4) with typed responses.
 """
+from pathlib import Path
+
 import ollama
 
 from deimos.config import CONFIG
@@ -25,6 +27,13 @@ class Brain:
         if facts:
             content += "\n\nWhat you already know about the user:\n" + "\n".join(
                 f"- {f}" for f in facts
+            )
+        active = memory.get_active_project()
+        if active:
+            content += (
+                f"\n\nCurrent project: {Path(active).name} ({active}). For "
+                "follow-up requests like 'add…', 'change…', 'make it…' that don't "
+                "name a project, pass this path as project_path."
             )
         return content
 

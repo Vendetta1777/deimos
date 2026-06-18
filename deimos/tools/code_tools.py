@@ -14,7 +14,10 @@ import subprocess
 import time
 from pathlib import Path
 
+import ollama
+
 from deimos.config import CONFIG
+from deimos.memory import memory
 from deimos.tools.registry import registry
 
 # Project root = the folder that contains the `deimos` package (…/deimos).
@@ -56,6 +59,60 @@ def _snapshot(cwd: Path) -> str | None:
     return rev.stdout.strip() or None
 
 
+def _expand_spec(instruction: str) -> str:
+    """Use the larger coder model to turn the request into a detailed build spec.
+
+    Runs only here (not in everyday chat) and lets the coder model unload when
+    idle. Falls back to the raw instruction if the ollama call fails for any
+    reason, so a coding run never depends on this step succeeding.
+    """
+    try:
+        client = ollama.Client(host=CONFIG.ollama_host)
+        resp = client.chat(
+            model=CONFIG.coder_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a senior engineer. Rewrite the user's request "
+                        "into a precise, detailed, actionable build/edit spec for "
+                        "a coding agent. Be concrete about structure, features, "
+                        "and quality. Output only the spec."
+                    ),
+                },
+                {"role": "user", "content": instruction},
+            ],
+            keep_alive=CONFIG.coder_keep_alive,
+        )
+        spec = (resp.message.content or "").strip()
+        return spec or instruction
+    except Exception:
+        return instruction
+
+
+def _open_index(cwd: Path) -> bool:
+    """Open the project's root index.html in a clean window. Returns True if it
+    found one and launched the opener."""
+    index = cwd / "index.html"
+    if not index.exists():
+        return False
+    chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    try:
+        if Path(chrome).exists():
+            subprocess.Popen(
+                [chrome, f"--app=file://{index.resolve()}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        else:
+            subprocess.Popen(
+                ["open", str(index)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        return True
+    except Exception:
+        return False
+
+
 @registry.tool(
     name="run_claude_code",
     description=(
@@ -81,11 +138,15 @@ def _snapshot(cwd: Path) -> str | None:
 def run_claude_code(instruction: str, project_path: str = "self") -> str:
     cwd = _resolve_project(project_path)
     cwd.mkdir(parents=True, exist_ok=True)
+    is_self = cwd == PROJECT_ROOT
 
     snapshot = _snapshot(cwd)
     snap_note = f" Snapshot {snapshot[:8]} saved (undo: git -C {cwd} reset --hard {snapshot[:8]})." if snapshot else ""
 
-    full_instruction = QUALITY_PREAMBLE + instruction
+    # Expand the request into a detailed spec with the coder model, then prepend
+    # the standing quality preamble. Spec expansion falls back to the raw text.
+    spec = _expand_spec(instruction)
+    full_instruction = QUALITY_PREAMBLE + spec
     try:
         result = subprocess.run(
             ["claude", "-p", full_instruction, "--dangerously-skip-permissions"],
@@ -102,5 +163,14 @@ def run_claude_code(instruction: str, project_path: str = "self") -> str:
     out = (result.stdout or "").strip()
     err = (result.stderr or "").strip()
     summary = out[-1200:] if out else (err[-600:] if err else "Done, no output returned.")
-    target = "myself" if cwd == PROJECT_ROOT else cwd.name
-    return f"Ran your request on {target}.{snap_note}\n\n{summary}"
+    target = "myself" if is_self else cwd.name
+
+    # For real projects (not self-edits): remember it as the active project so
+    # the user can iterate by voice, and open its index.html if it built a site.
+    opened_note = ""
+    if not is_self:
+        memory.set_active_project(str(cwd))
+        if _open_index(cwd):
+            opened_note = " I opened it in a window so you can see it."
+
+    return f"Ran your request on {target}.{snap_note}{opened_note}\n\n{summary}"
