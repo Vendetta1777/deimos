@@ -1,7 +1,7 @@
 """Speech to text: record from the mic and transcribe with faster-whisper.
 
 faster-whisper runs on CPU via Accelerate on Apple Silicon. For the short
-command-length clips Jarvis deals with, int8 is quick and uses little memory.
+command-length clips Deimos deals with, int8 is quick and uses little memory.
 """
 import threading
 
@@ -9,7 +9,7 @@ import numpy as np
 import sounddevice as sd
 from faster_whisper import WhisperModel
 
-from jarvis.config import CONFIG
+from deimos.config import CONFIG
 
 
 class SpeechToText:

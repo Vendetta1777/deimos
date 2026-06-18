@@ -1,4 +1,4 @@
-"""Local web server for the Jarvis app.
+"""Local web server for the Deimos app.
 
 Serves the orb UI and exposes a WebSocket that drives it. The browser sends an
 action ("listen", "pause", or a typed message); the server runs the existing
@@ -6,13 +6,13 @@ voice pipeline and pushes state updates (idle, listening, thinking, speaking)
 and transcript lines back so the orb reacts in real time.
 
 Clicking the orb while it is listening sends "pause", which signals the
-in-progress recording to stop and drops Jarvis back to idle without
+in-progress recording to stop and drops Deimos back to idle without
 transcribing. To keep accepting that message while a recording is underway, the
 pipeline runs as its own task and the receive loop stays free.
 
 The blocking pieces (recording, transcription, the model, speech) run in worker
 threads via asyncio.to_thread so the connection stays responsive. A lock keeps
-requests from overlapping, since Jarvis handles one conversation at a time.
+requests from overlapping, since Deimos handles one conversation at a time.
 
 Run with:  python server.py    then open http://localhost:8765
 """
@@ -25,13 +25,13 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from jarvis.audio.stt import SpeechToText
-from jarvis.audio.tts import TextToSpeech
-from jarvis.brain.llm import Brain
-import jarvis.tools.builtin  # noqa: F401  registers the built-in tools
-import jarvis.tools.memory_tools  # noqa: F401  registers remember/recall
-import jarvis.tools.skills  # noqa: F401  registers web/weather/system/notes/etc.
-import jarvis.tools.code_tools  # noqa: F401  registers run_claude_code
+from deimos.audio.stt import SpeechToText
+from deimos.audio.tts import TextToSpeech
+from deimos.brain.llm import Brain
+import deimos.tools.builtin  # noqa: F401  registers the built-in tools
+import deimos.tools.memory_tools  # noqa: F401  registers remember/recall
+import deimos.tools.skills  # noqa: F401  registers web/weather/system/notes/etc.
+import deimos.tools.code_tools  # noqa: F401  registers run_claude_code
 
 WEB_DIR = Path(__file__).parent / "web"
 
@@ -81,7 +81,7 @@ async def ws(socket: WebSocket) -> None:
 
             await line("you", user_text)
             reply = await asyncio.to_thread(brain.ask, user_text)
-            await line("jarvis", reply)
+            await line("deimos", reply)
 
             await state("speaking")
             await asyncio.to_thread(tts.speak, reply)

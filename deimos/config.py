@@ -1,4 +1,4 @@
-"""Central configuration for Jarvis.
+"""Central configuration for Deimos.
 
 Tuned for a 16 GB M4: a single 8B model stays resident as the everyday brain.
 Edit the values here; everything else reads from CONFIG.
@@ -15,7 +15,7 @@ class Config:
     llm_model: str = "qwen2.5:7b"
     ollama_host: str = "http://localhost:11434"
     system_prompt: str = (
-        "You are Jarvis, a concise, helpful, personal voice assistant with a "
+        "You are Deimos, a concise, helpful, personal voice assistant with a "
         "calm, refined manner. Keep spoken replies short and natural, one or "
         "two sentences. Use the available tools when they help. "
         "For anything about the current time or date, ALWAYS call "
@@ -43,7 +43,7 @@ class Config:
 
     # Long-term memory database. Kept OUTSIDE the project folder so it survives
     # re-downloading or re-unzipping the app.
-    memory_path: str = "~/.jarvis/memory.db"
+    memory_path: str = "~/.deimos/memory.db"
 
     # --- Speech to text (faster-whisper) ---
     whisper_model: str = "base.en"   # tiny.en (fastest) / base.en / small.en (best)
@@ -56,7 +56,7 @@ class Config:
     max_record_seconds: float = 15.0
 
     # --- Text to speech ---
-    # Jarvis auto-picks the most natural voice available, in this order:
+    # Deimos auto-picks the most natural voice available, in this order:
     # Piper (if installed) -> the best of these `say` voices that exists ->
     # any installed Premium/Enhanced English voice -> a sensible default.
     # Install a Premium voice for a big quality jump (see README).
@@ -69,9 +69,9 @@ class Config:
     tts_rate: int = 178              # words per minute (calmer pace)
 
     # Piper: cinematic local neural voice. If this model file exists and the
-    # `piper` command is installed, Jarvis uses it (see README). en_GB-alan is a
+    # `piper` command is installed, Deimos uses it (see README). en_GB-alan is a
     # deep, natural British voice.
-    piper_model: str = "~/jarvis/voices/en_GB-alan-medium.onnx"
+    piper_model: str = "~/deimos/voices/en_GB-alan-medium.onnx"
     # Pacing makes Piper sound more human: >1.0 is slower/calmer; sentence
     # silence adds a natural pause between sentences.
     piper_length_scale: float = 1.08

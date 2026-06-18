@@ -1,23 +1,23 @@
-"""Jarvis entry point: a minimal but extensible voice loop.
+"""Deimos entry point: a minimal but extensible voice loop.
 
-Press Enter to talk (Jarvis records until you go quiet), or just type a message
-to test without a mic. Jarvis transcribes locally, thinks with a local model
+Press Enter to talk (Deimos records until you go quiet), or just type a message
+to test without a mic. Deimos transcribes locally, thinks with a local model
 (calling tools when useful), and speaks the reply.
 
 This is the spine. Wake word, the HUD, Google integrations, and Claude Code all
 plug into the same tool registry and brain you see here.
 """
-from jarvis.audio.stt import SpeechToText
-from jarvis.audio.tts import TextToSpeech
-from jarvis.brain.llm import Brain
-import jarvis.tools.builtin  # noqa: F401  registers the built-in tools on import
-import jarvis.tools.memory_tools  # noqa: F401  registers remember/recall
-import jarvis.tools.skills  # noqa: F401  registers web/weather/system/notes/etc.
-import jarvis.tools.code_tools  # noqa: F401  registers run_claude_code
+from deimos.audio.stt import SpeechToText
+from deimos.audio.tts import TextToSpeech
+from deimos.brain.llm import Brain
+import deimos.tools.builtin  # noqa: F401  registers the built-in tools on import
+import deimos.tools.memory_tools  # noqa: F401  registers remember/recall
+import deimos.tools.skills  # noqa: F401  registers web/weather/system/notes/etc.
+import deimos.tools.code_tools  # noqa: F401  registers run_claude_code
 
 
 def main() -> None:
-    print("Loading Jarvis...")
+    print("Loading Deimos...")
     stt = SpeechToText()
     tts = TextToSpeech()
     brain = Brain()
@@ -45,7 +45,7 @@ def main() -> None:
             continue
 
         reply = brain.ask(user_text)
-        print(f"jarvis > {reply}\n")
+        print(f"deimos > {reply}\n")
         tts.speak(reply)
 
 

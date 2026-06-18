@@ -1,18 +1,18 @@
-"""Long-term memory for Jarvis, backed by a local SQLite database.
+"""Long-term memory for Deimos, backed by a local SQLite database.
 
 Two layers:
   - turns:  every exchange ever, logged verbatim (the full record)
-  - facts:  durable things Jarvis has learned about the user, injected into
+  - facts:  durable things Deimos has learned about the user, injected into
             the system prompt each turn so he stays personal across sessions
 
 Uses only the standard library. The database lives outside the project folder
-(default ~/.jarvis/memory.db) so it survives re-downloading the app.
+(default ~/.deimos/memory.db) so it survives re-downloading the app.
 """
 import sqlite3
 import time
 from pathlib import Path
 
-from jarvis.config import CONFIG
+from deimos.config import CONFIG
 
 
 class Memory:

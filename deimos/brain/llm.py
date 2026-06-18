@@ -2,16 +2,16 @@
 
 The local model decides when to call a tool. We execute it, feed the result
 back, and let the model produce the final answer. Before every turn we refresh
-the system prompt with what Jarvis remembers about the user, and we log each
+the system prompt with what Deimos remembers about the user, and we log each
 exchange to long-term memory.
 
 Targets a recent ollama python client (>= 0.4) with typed responses.
 """
 import ollama
 
-from jarvis.config import CONFIG
-from jarvis.memory import memory
-from jarvis.tools.registry import registry
+from deimos.config import CONFIG
+from deimos.memory import memory
+from deimos.tools.registry import registry
 
 
 class Brain:
@@ -46,7 +46,7 @@ class Brain:
 
                 if not message.tool_calls:
                     reply = (message.content or "").strip()
-                    memory.log("jarvis", reply)
+                    memory.log("deimos", reply)
                     return reply
 
                 for call in message.tool_calls:
@@ -64,7 +64,7 @@ class Brain:
             reply = "Sorry, my thinking backend isn't responding right now."
             memory.log("error", f"{type(exc).__name__}: {exc}")
 
-        memory.log("jarvis", reply)
+        memory.log("deimos", reply)
         return reply
 
     def _trim(self) -> None:

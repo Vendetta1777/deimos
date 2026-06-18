@@ -1,7 +1,7 @@
 """A tiny tool registry. Decorate a function with @registry.tool and the local
 model can call it.
 
-This is the whole extensibility story: to give Jarvis a new skill, write a
+This is the whole extensibility story: to give Deimos a new skill, write a
 function, decorate it, and import the module. The brain handles the rest. Later,
 MCP servers can be wrapped as tools and registered here too.
 """

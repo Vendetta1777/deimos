@@ -1,6 +1,6 @@
-"""Jarvis's everyday skills.
+"""Deimos's everyday skills.
 
-A batch of practical, robust tools that make Jarvis genuinely useful day to day:
+A batch of practical, robust tools that make Deimos genuinely useful day to day:
 the web, weather, the system it runs on, the clipboard, notes, timers, volume,
 quick math, and light file inspection. Everything here uses only the standard
 library plus macOS command-line tools, so there are no extra dependencies.
@@ -22,10 +22,10 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from jarvis.tools.registry import registry
+from deimos.tools.registry import registry
 
-_UA = "Mozilla/5.0 (Jarvis voice assistant)"
-NOTES_PATH = Path("~/.jarvis/notes.md").expanduser()
+_UA = "Mozilla/5.0 (Deimos voice assistant)"
+NOTES_PATH = Path("~/.deimos/notes.md").expanduser()
 
 # Building a trust store that works everywhere this app might run:
 #   1. certifi's bundle (covers the public web; some Python installs, e.g.
@@ -260,7 +260,7 @@ def clipboard_set(text: str) -> str:
         "required": ["message"],
     },
 )
-def notify(message: str, title: str = "Jarvis") -> str:
+def notify(message: str, title: str = "Deimos") -> str:
     t = title.replace('"', "'")
     m = message.replace('"', "'")
     _run(["osascript", "-e", f'display notification "{m}" with title "{t}"'])
@@ -270,7 +270,7 @@ def notify(message: str, title: str = "Jarvis") -> str:
 @registry.tool(
     name="set_timer",
     description=(
-        "Set a timer. After the given number of seconds, Jarvis shows a "
+        "Set a timer. After the given number of seconds, Deimos shows a "
         "notification and speaks the label."
     ),
     parameters={
@@ -289,7 +289,7 @@ def set_timer(seconds: int, label: str = "Timer") -> str:
         time.sleep(seconds)
         msg = f"{label} is up."
         _run(["osascript", "-e",
-              f'display notification "{msg}" with title "Jarvis timer"'])
+              f'display notification "{msg}" with title "Deimos timer"'])
         _run(["say", msg], timeout=20)
 
     threading.Thread(target=_fire, daemon=True).start()

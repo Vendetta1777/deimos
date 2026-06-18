@@ -1,6 +1,6 @@
-"""Tools that let Jarvis write to and read from long-term memory."""
-from jarvis.memory import memory
-from jarvis.tools.registry import registry
+"""Tools that let Deimos write to and read from long-term memory."""
+from deimos.memory import memory
+from deimos.tools.registry import registry
 
 
 @registry.tool(

@@ -7,7 +7,7 @@ function — the local model decides when to call it.
 import subprocess
 from datetime import datetime
 
-from jarvis.tools.registry import registry
+from deimos.tools.registry import registry
 
 
 @registry.tool(

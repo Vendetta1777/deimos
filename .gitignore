@@ -18,4 +18,4 @@ voices/
 .vscode/
 *.log
 
-# Jarvis runtime data lives in ~/.jarvis (outside the repo) — never commit it.
+# Deimos runtime data lives in ~/.deimos (outside the repo) — never commit it.

@@ -1,4 +1,4 @@
-# Jarvis
+# Deimos
 
 A local, private voice assistant for Apple Silicon. The everyday brain runs
 on-device (Ollama), so your speech and tool data never leave your Mac. The
@@ -30,7 +30,7 @@ into next.
 
 3. **Create a virtual environment and install deps:**
    ```bash
-   cd jarvis
+   cd deimos
    python3 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
@@ -68,7 +68,7 @@ python main.py
 ```
 main.py                 # entry point + voice loop
 requirements.txt
-jarvis/
+deimos/
   config.py             # all settings (model, voice, audio thresholds)
   audio/
     stt.py              # mic recording + faster-whisper transcription
@@ -83,7 +83,7 @@ jarvis/
 ## Adding a skill
 
 ```python
-from jarvis.tools.registry import registry
+from deimos.tools.registry import registry
 
 @registry.tool(
     name="flip_coin",
@@ -102,7 +102,7 @@ Import the module once (e.g. in `main.py`) and the model can call it.
 2. Google Calendar + Gmail tools (OAuth, read-only first)
 3. Email send + proactive reminder poller (with confirmation gates)
 4. A `run_claude_code` tool that shells out to the `claude` CLI in a project dir
-5. Swap the press-to-talk for an `openWakeWord` "Hey Jarvis" trigger
+5. Swap the press-to-talk for an `openWakeWord` "Hey Deimos" trigger
 6. A Tauri HUD overlay (status orb + live transcript)
 
 ## Notes
@@ -114,7 +114,7 @@ Import the module once (e.g. in `main.py`) and the model can call it.
 
 ## Cinematic voice (Piper) — optional
 
-Jarvis sounds decent out of the box using the British `Daniel` voice. For a
+Deimos sounds decent out of the box using the British `Daniel` voice. For a
 richer neural voice, set up Piper. Until you do, it automatically falls back to
 `Daniel`, so nothing breaks.
 
@@ -122,16 +122,16 @@ richer neural voice, set up Piper. Until you do, it automatically falls back to
 # 1. install Piper into your venv
 pip install piper-tts
 
-# 2. download a voice into ~/jarvis/voices/
-mkdir -p ~/jarvis/voices
-cd ~/jarvis/voices
+# 2. download a voice into ~/deimos/voices/
+mkdir -p ~/deimos/voices
+cd ~/deimos/voices
 curl -L -O https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx
 curl -L -O https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json
 ```
 
 Restart `python server.py`. If the model file and the `piper` command are both
-present, Jarvis uses Piper automatically. To try other voices, browse
-huggingface.co/rhasspy/piper-voices and update `piper_model` in `jarvis/config.py`.
+present, Deimos uses Piper automatically. To try other voices, browse
+huggingface.co/rhasspy/piper-voices and update `piper_model` in `deimos/config.py`.
 
 ## Standalone window (Tauri) — optional
 
@@ -149,7 +149,7 @@ npm create tauri-app@latest jarvis-window
 cd jarvis-window
 ```
 
-Then point the window at the running Jarvis server. In
+Then point the window at the running Deimos server. In
 `src-tauri/tauri.conf.json`, set the main window so it loads the local server
 and looks the part:
 
@@ -158,7 +158,7 @@ and looks the part:
   "app": {
     "windows": [
       {
-        "title": "Jarvis",
+        "title": "Deimos",
         "url": "http://localhost:8765",
         "width": 900,
         "height": 700,
@@ -177,17 +177,17 @@ Run it (with `python server.py` already running in another tab):
 npm run tauri dev
 ```
 
-A native Jarvis window opens. Later we can have Tauri auto-start the Python
+A native Deimos window opens. Later we can have Tauri auto-start the Python
 server so you launch just one thing.
 
 ## Most natural voice (one-time, recommended)
 
-Jarvis automatically uses the best voice installed on your Mac. The built-in
+Deimos automatically uses the best voice installed on your Mac. The built-in
 compact voices sound robotic; a **Premium** voice sounds close to human:
 
 1. System Settings -> Accessibility -> Spoken Content -> System Voice -> Manage Voices
 2. Find an English voice marked **(Premium)** (e.g. Jamie, Serena, Zoe) and download it.
-3. Restart `python server.py`. Jarvis detects and uses it automatically.
+3. Restart `python server.py`. Deimos detects and uses it automatically.
 
 For an even richer neural voice, set up Piper (see the Piper section above).
 
@@ -200,7 +200,7 @@ time while listening.
 
 ## Memory (he learns about you)
 
-Jarvis now keeps long-term memory in a local SQLite database at `~/.jarvis/memory.db`
+Deimos now keeps long-term memory in a local SQLite database at `~/.deimos/memory.db`
 (outside the project, so it survives re-downloads). Two layers:
 
 - every exchange is logged verbatim (your full chat history)
@@ -209,7 +209,7 @@ Jarvis now keeps long-term memory in a local SQLite database at `~/.jarvis/memor
 
 Tell him things like "my name is …", "I'm working on …", "I prefer …" and he'll
 save them and use them later. He can also `recall` past topics. To wipe memory,
-delete `~/.jarvis/memory.db`. To inspect it: `sqlite3 ~/.jarvis/memory.db "select * from facts;"`
+delete `~/.deimos/memory.db`. To inspect it: `sqlite3 ~/.deimos/memory.db "select * from facts;"`
 
 ## Making the voice more human
 
@@ -217,7 +217,7 @@ Piper sounds best with a little pacing. `config.py` exposes:
 - `piper_length_scale` (default 1.08) — higher is slower/calmer
 - `piper_sentence_silence` (default 0.3) — pause between sentences
 
-For a different character, download another model into `~/jarvis/voices/` and set
+For a different character, download another model into `~/deimos/voices/` and set
 `piper_model` to it. Natural options to try:
 - `en_GB-jenny_dioco-medium` (warm British)
 - `en_US-ryan-high` (deep American, very natural)
@@ -225,15 +225,15 @@ Browse all at huggingface.co/rhasspy/piper-voices.
 
 ## Autonomous coding (run_claude_code)
 
-Jarvis can build, edit, and fix code by running Claude Code for you. Say things
+Deimos can build, edit, and fix code by running Claude Code for you. Say things
 like "build me a landing page for my band" or "fix the bug in my trading-game
 project" or "add a wake word to yourself". It calls the `claude` CLI in the
 target folder.
 
-Safety net: before every run, Jarvis takes an automatic git snapshot of that
+Safety net: before every run, Deimos takes an automatic git snapshot of that
 project. If a run makes a mess, undo it with the hash it reports:
     git -C <project> reset --hard <hash>
-Self-edits ("change yourself") run against the Jarvis project with the same net;
+Self-edits ("change yourself") run against the Deimos project with the same net;
 restart the server after a self-edit to load the new code.
 
 Settings in `config.py`: `projects_dir` (where project names resolve),
@@ -242,5 +242,5 @@ Settings in `config.py`: `projects_dir` (where project names resolve),
 ## Standalone window (Tauri)
 
 Hand `TAURI_FOR_CLAUDE_CODE.md` to Claude Code to build a native macOS window
-around Jarvis (its own icon, no browser). It installs Rust, scaffolds the app,
+around Deimos (its own icon, no browser). It installs Rust, scaffolds the app,
 points it at your running server, and launches it.

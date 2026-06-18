@@ -6,7 +6,7 @@ Picks the most natural voice available at startup:
   3. any installed Premium/Enhanced English voice
   4. a sensible default
 
-Always falls back gracefully, so Jarvis never goes silent.
+Always falls back gracefully, so Deimos never goes silent.
 """
 import os
 import re
@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from jarvis.config import CONFIG
+from deimos.config import CONFIG
 
 
 def _available_say_voices() -> list[tuple[str, str]]:

@@ -1,4 +1,4 @@
-"""Let Jarvis run Claude Code on your behalf.
+"""Let Deimos run Claude Code on your behalf.
 
 The model calls run_claude_code with a plain-language instruction and a target
 project. We resolve the folder, take an automatic git snapshot (so any change
@@ -6,7 +6,7 @@ is undoable), then run the `claude` CLI there non-interactively and read back
 what it did.
 
 Safety net: every run is preceded by a git commit. If a run makes a mess —
-including Jarvis editing itself — you can undo it with:
+including Deimos editing itself — you can undo it with:
     git -C <project> reset --hard <snapshot-hash>
 The snapshot hash is included in the tool's reply.
 """
@@ -14,15 +14,15 @@ import subprocess
 import time
 from pathlib import Path
 
-from jarvis.config import CONFIG
-from jarvis.tools.registry import registry
+from deimos.config import CONFIG
+from deimos.tools.registry import registry
 
-# Project root = the folder that contains the `jarvis` package (…/jarvis).
+# Project root = the folder that contains the `deimos` package (…/deimos).
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _resolve_project(project_path: str) -> Path:
-    if not project_path or project_path.lower() in {"self", "jarvis", "yourself"}:
+    if not project_path or project_path.lower() in {"self", "deimos", "yourself"}:
         return PROJECT_ROOT
     p = Path(project_path).expanduser()
     if not p.is_absolute():
@@ -31,7 +31,7 @@ def _resolve_project(project_path: str) -> Path:
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess:
-    base = ["git", "-c", "user.name=Jarvis", "-c", "user.email=jarvis@local", "-C", str(cwd)]
+    base = ["git", "-c", "user.name=Deimos", "-c", "user.email=deimos@local", "-C", str(cwd)]
     return subprocess.run(base + list(args), capture_output=True, text=True)
 
 
@@ -43,7 +43,7 @@ def _snapshot(cwd: Path) -> str | None:
         _git(cwd, "init")
     _git(cwd, "add", "-A")
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    _git(cwd, "commit", "-m", f"jarvis snapshot before edit {stamp}", "--allow-empty")
+    _git(cwd, "commit", "-m", f"deimos snapshot before edit {stamp}", "--allow-empty")
     rev = _git(cwd, "rev-parse", "HEAD")
     return rev.stdout.strip() or None
 
@@ -53,7 +53,7 @@ def _snapshot(cwd: Path) -> str | None:
     description=(
         "Build, edit, or fix code, websites, or projects by running Claude Code. "
         "Pass the user's full request as 'instruction'. Set 'project_path' to the "
-        "project folder name or path, or 'self' to modify Jarvis itself."
+        "project folder name or path, or 'self' to modify Deimos itself."
     ),
     parameters={
         "type": "object",
@@ -64,7 +64,7 @@ def _snapshot(cwd: Path) -> str | None:
             },
             "project_path": {
                 "type": "string",
-                "description": "Project folder name/path, or 'self' for Jarvis itself.",
+                "description": "Project folder name/path, or 'self' for Deimos itself.",
             },
         },
         "required": ["instruction", "project_path"],
