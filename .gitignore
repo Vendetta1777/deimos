@@ -18,4 +18,11 @@ voices/
 .vscode/
 *.log
 
+# Secrets / credentials — never commit these
+.env
+token.json
+client_secret*.json
+credentials.json
+*.db
+
 # Deimos runtime data lives in ~/.deimos (outside the repo) — never commit it.

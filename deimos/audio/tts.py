@@ -34,6 +34,51 @@ def _available_say_voices() -> list[tuple[str, str]]:
     return voices
 
 
+# Emoji and pictographic symbol ranges that should never be vocalized. Kept
+# deliberately narrow so normal punctuation and apostrophes are untouched.
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F000-\U0001FAFF"  # emoji, pictographs, flags (regional indicators)
+    "\U00002600-\U000027BF"  # misc symbols + dingbats
+    "\U00002B00-\U00002BFF"  # stars / misc symbols & arrows
+    "\U00002190-\U000021FF"  # arrows (e.g. weather wind direction)
+    "\U0000FE00-\U0000FE0F"  # variation selectors
+    "\U0000200D"             # zero-width joiner (emoji sequences)
+    "\U00002122\U00002139"   # trademark, info source
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def _clean_for_speech(text: str) -> str:
+    """Strip anything that shouldn't be read aloud (markdown + symbols + emoji).
+
+    Keeps the visible words and normal punctuation/apostrophes; removes only the
+    formatting characters. Runs before any voice path so Piper and `say` agree.
+    """
+    if not text:
+        return ""
+    # Links/images: keep the visible text, drop the URL.
+    text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", text)   # ![alt](url) -> alt
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)    # [text](url) -> text
+    # Code fences (``` optionally with a language) then any inline backticks.
+    text = re.sub(r"```[A-Za-z0-9_-]*\n?", "", text)
+    text = text.replace("`", "")
+    # Markdown headers at the start of a line.
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)
+    # Bullet markers at the start of a line (-, *, +).
+    text = re.sub(r"(?m)^\s*[-*+]\s+", "", text)
+    # Bold/italic markers.
+    text = re.sub(r"\*\*|__|\*|_", "", text)
+    # Blockquote and tilde symbols.
+    text = re.sub(r"[>~]", "", text)
+    # Emoji / non-speech pictographs.
+    text = _EMOJI_RE.sub("", text)
+    # Collapse any leftover double spaces.
+    text = re.sub(r" {2,}", " ", text)
+    return text.strip()
+
+
 def _choose_say_voice() -> str | None:
     voices = _available_say_voices()
     if not voices:
@@ -59,6 +104,7 @@ class TextToSpeech:
         self.say_voice = _choose_say_voice()
 
     def speak(self, text: str) -> None:
+        text = _clean_for_speech(text)
         if not text.strip():
             return
         if self.piper_ready:

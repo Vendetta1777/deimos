@@ -12,8 +12,11 @@ class Config:
     # The everyday brain. On 16 GB, an 8B Q4 model is the sweet spot:
     # smart enough for routing + tool use, ~5 GB resident, fast.
     # Alternatives that support tool-calling: "llama3.1:8b".
-    llm_model: str = "qwen2.5:7b"
+    llm_model: str = "qwen2.5:3b"
     ollama_host: str = "http://localhost:11434"
+    # Keep the model resident in memory between requests (-1 = never unload),
+    # so it doesn't pay model-reload latency on each turn.
+    keep_alive: int = -1
     system_prompt: str = (
         "You are Deimos, a concise, helpful, personal voice assistant with a "
         "calm, refined manner. Keep spoken replies short and natural, one or "
@@ -34,7 +37,9 @@ class Config:
         "clipboard, take and read notes, set timers, show notifications, do "
         "quick math, and list folders or read text files. Reach for the right "
         "tool instead of guessing, and never read tool output verbatim — answer "
-        "in your own concise, natural voice."
+        "in your own concise, natural voice. "
+        "Reply in plain spoken sentences. Do not use markdown, asterisks, bullet "
+        "points, headings, or emoji — your replies are read aloud."
     )
 
     # How many recent messages to keep (plus the system prompt). A wider window
@@ -46,7 +51,7 @@ class Config:
     memory_path: str = "~/.deimos/memory.db"
 
     # --- Speech to text (faster-whisper) ---
-    whisper_model: str = "base.en"   # tiny.en (fastest) / base.en / small.en (best)
+    whisper_model: str = "tiny.en"   # tiny.en (fastest) / base.en / small.en (best)
     whisper_compute: str = "int8"    # int8 is fast and light on Apple Silicon
 
     # --- Audio capture ---

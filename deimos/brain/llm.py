@@ -40,6 +40,7 @@ class Brain:
                     model=CONFIG.llm_model,
                     messages=self.history,
                     tools=registry.schemas(),
+                    keep_alive=CONFIG.keep_alive,
                 )
                 message = response.message
                 self.history.append(message)
@@ -57,7 +58,11 @@ class Brain:
                         {"role": "tool", "name": name, "content": result}
                     )
 
-            final = self.client.chat(model=CONFIG.llm_model, messages=self.history)
+            final = self.client.chat(
+                model=CONFIG.llm_model,
+                messages=self.history,
+                keep_alive=CONFIG.keep_alive,
+            )
             reply = (final.message.content or "").strip()
         except Exception as exc:
             # Never let a backend hiccup crash the conversation loop.
