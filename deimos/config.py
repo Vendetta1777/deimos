@@ -64,9 +64,9 @@ class Config:
 
     # --- Audio capture ---
     sample_rate: int = 16000
-    silence_threshold: float = 0.01  # RMS below this counts as silence
-    silence_duration: float = 1.0    # seconds of silence that ends a turn
-    max_record_seconds: float = 15.0
+    silence_threshold: float = 0.006  # RMS below this counts as silence (less twitchy)
+    silence_duration: float = 2.5     # seconds of silence that ends a turn (allow pauses)
+    max_record_seconds: float = 45.0  # room for long, detailed instructions
 
     # --- Text to speech ---
     # Deimos auto-picks the most natural voice available, in this order:

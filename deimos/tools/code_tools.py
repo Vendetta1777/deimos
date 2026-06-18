@@ -76,10 +76,18 @@ def _expand_spec(instruction: str) -> str:
                 {
                     "role": "system",
                     "content": (
-                        "You are a senior engineer. Rewrite the user's request "
-                        "into a precise, detailed, actionable build/edit spec for "
-                        "a coding agent. Be concrete about structure, features, "
-                        "and quality. Output only the spec."
+                        "You are a senior product designer and engineer. Turn the "
+                        "user's request into a precise build spec that includes: "
+                        "the subject, audience, and the page's single job; a "
+                        "palette of 4–6 hex values; a deliberate display + body "
+                        "type pairing; a distinctive layout concept; and ONE "
+                        "signature element the page is remembered by. Explicitly "
+                        "avoid generic AI-default looks (cream+serif+terracotta; "
+                        "near-black+acid accent; broadsheet hairline). Specify "
+                        "responsive behavior, accessibility (keyboard focus, "
+                        "reduced motion), and real example copy (no lorem ipsum). "
+                        "The finished site must live at index.html in the project "
+                        "root. Output only the spec."
                     ),
                 },
                 {"role": "user", "content": instruction},
@@ -94,20 +102,31 @@ def _expand_spec(instruction: str) -> str:
 
 def _open_index(cwd: Path) -> bool:
     """Open the project's root index.html in a clean window. Returns True if it
-    found one and launched the opener."""
+    found one and launched the opener.
+
+    Projects under ~/deimos-projects are opened through the Deimos server
+    (same-origin /preview URL) so the injected in-page editor's Save can write
+    back; anything else falls back to opening the file directly.
+    """
     index = cwd / "index.html"
     if not index.exists():
         return False
+    projects_root = Path(CONFIG.projects_dir).expanduser().resolve()
+    try:
+        rel = cwd.resolve().relative_to(projects_root)
+        url = f"http://localhost:8765/preview/{rel.as_posix()}/index.html"
+    except ValueError:
+        url = f"file://{index.resolve()}"
     chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     try:
         if Path(chrome).exists():
             subprocess.Popen(
-                [chrome, f"--app=file://{index.resolve()}"],
+                [chrome, f"--app={url}"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
         else:
             subprocess.Popen(
-                ["open", str(index)],
+                ["open", url],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
         return True
