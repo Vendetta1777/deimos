@@ -97,7 +97,11 @@ class Config:
     # Folder that project names are resolved against (e.g. "trading-game").
     projects_dir: str = "~/deimos-projects"
     # How long a single Claude Code run may take before we give up (seconds).
-    code_timeout: int = 600
+    # 1200 = 20 min, so large builds aren't cut off mid-way.
+    code_timeout: int = 1200
+    # Auto-publish each built project (not 'self') to a PUBLIC GitHub repo and,
+    # for websites, deploy via GitHub Pages. Set False to disable.
+    auto_publish: bool = True
     # Auto git-snapshot a project before editing it, so any run is undoable.
     code_auto_snapshot: bool = True
 

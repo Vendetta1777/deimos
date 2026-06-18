@@ -2,6 +2,7 @@ const canvas = document.getElementById("orb");
 const ctx = canvas.getContext("2d");
 const stage = document.getElementById("stage");
 const statusEl = document.getElementById("status");
+const progressEl = document.getElementById("progress");
 const saidEl = document.getElementById("said");
 const replyEl = document.getElementById("reply");
 const hintEl = document.getElementById("hint");
@@ -159,6 +160,7 @@ function connect() {
     const d = JSON.parse(e.data);
     if (d.type === "state") setState(d.state);
     else if (d.type === "transcript") caption(d.role, d.text);
+    else if (d.type === "progress") showProgress(d);
   };
   ws.onclose = () => { statusEl.textContent = "reconnecting"; setTimeout(connect, 1200); };
 }
@@ -170,7 +172,26 @@ function setState(s) {
   hintEl.classList.toggle("dim", s !== "idle");
   if (s === "listening") startMic();
   else stopMic();
+  // Progress only makes sense while thinking/working; clear it otherwise.
+  if (s === "idle" || s === "speaking") clearProgress();
   if (s === "idle") scheduleFade();
+}
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function showProgress(d) {
+  let label = `${(d.phase || "Thinking").toUpperCase()} · ${fmtTime(d.elapsed || 0)}`;
+  if (d.estimate) label += ` · est ~${Math.max(1, Math.round(d.estimate / 60))}m`;
+  progressEl.textContent = label;
+  progressEl.classList.add("show");
+}
+
+function clearProgress() {
+  progressEl.classList.remove("show");
+  progressEl.textContent = "";
 }
 
 function caption(role, text) {

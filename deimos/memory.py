@@ -36,6 +36,11 @@ class Memory:
             "CREATE TABLE IF NOT EXISTS state "
             "(key TEXT PRIMARY KEY, value TEXT, ts REAL)"
         )
+        # How long past builds took, to offer a rough ETA on future ones.
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS builds "
+            "(id INTEGER PRIMARY KEY, ts REAL, seconds INTEGER, label TEXT)"
+        )
         self.db.commit()
 
     def log(self, role: str, text: str) -> None:
@@ -93,6 +98,22 @@ class Memory:
 
     def get_active_project(self) -> str | None:
         return self.get_state("active_project")
+
+    # --- build durations / ETA ---
+    def log_build(self, seconds: int, label: str) -> None:
+        self.db.execute(
+            "INSERT INTO builds (ts, seconds, label) VALUES (?, ?, ?)",
+            (time.time(), int(seconds), label),
+        )
+        self.db.commit()
+
+    def avg_build_seconds(self) -> int | None:
+        rows = self.db.execute(
+            "SELECT seconds FROM builds ORDER BY id DESC LIMIT 10"
+        ).fetchall()
+        if not rows:
+            return None
+        return int(sum(r[0] for r in rows) / len(rows))
 
 
 memory = Memory()

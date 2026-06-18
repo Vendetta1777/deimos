@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from deimos.audio.stt import SpeechToText
 from deimos.audio.tts import TextToSpeech
 from deimos.brain.llm import Brain
+from deimos.progress import progress
 import deimos.tools.builtin  # noqa: F401  registers the built-in tools
 import deimos.tools.memory_tools  # noqa: F401  registers remember/recall
 import deimos.tools.skills  # noqa: F401  registers web/weather/system/notes/etc.
@@ -80,7 +81,32 @@ async def ws(socket: WebSocket) -> None:
                 return
 
             await line("you", user_text)
-            reply = await asyncio.to_thread(brain.ask, user_text)
+
+            # Stream live progress (phase + elapsed) while the turn runs in a
+            # worker thread, so the UI isn't frozen on "thinking" during builds.
+            progress.start()
+
+            async def push_progress() -> None:
+                try:
+                    while True:
+                        phase, elapsed = progress.snapshot()
+                        await socket.send_json({
+                            "type": "progress",
+                            "phase": phase or "Thinking",
+                            "elapsed": elapsed,
+                            "estimate": progress.estimate,
+                        })
+                        await asyncio.sleep(1)
+                except asyncio.CancelledError:
+                    pass
+
+            prog_task = asyncio.create_task(push_progress())
+            try:
+                reply = await asyncio.to_thread(brain.ask, user_text)
+            finally:
+                prog_task.cancel()
+                progress.stop()
+
             await line("deimos", reply)
 
             await state("speaking")

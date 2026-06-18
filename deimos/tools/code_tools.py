@@ -10,6 +10,7 @@ including Deimos editing itself — you can undo it with:
     git -C <project> reset --hard <snapshot-hash>
 The snapshot hash is included in the tool's reply.
 """
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -18,6 +19,7 @@ import ollama
 
 from deimos.config import CONFIG
 from deimos.memory import memory
+from deimos.progress import progress
 from deimos.tools.registry import registry
 
 # Project root = the folder that contains the `deimos` package (…/deimos).
@@ -113,6 +115,133 @@ def _open_index(cwd: Path) -> bool:
         return False
 
 
+_GITIGNORE = """\
+# Dependencies / build output
+node_modules/
+dist/
+build/
+.cache/
+__pycache__/
+*.pyc
+
+# Secrets — never commit these
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+client_secret*.json
+token.json
+
+# OS cruft
+.DS_Store
+"""
+
+# Patterns that look like real secrets; if present in tracked files we refuse to
+# publish, so an auto-public push can never leak a key.
+_SECRET_RE = re.compile(
+    r"(sk-[A-Za-z0-9]{20})|(ghp_[A-Za-z0-9]{20})|(gho_[A-Za-z0-9]{20})"
+    r"|(AKIA[0-9A-Z]{16})|(xox[baprs]-)|(-----BEGIN (RSA |OPENSSH |)PRIVATE KEY-----)"
+)
+
+
+def _ensure_gitignore(cwd: Path) -> None:
+    gi = cwd / ".gitignore"
+    if not gi.exists():
+        gi.write_text(_GITIGNORE)
+
+
+def _has_secrets(cwd: Path) -> bool:
+    """Scan files git would track for obvious secrets."""
+    tracked = _git(cwd, "ls-files")
+    for rel in tracked.stdout.splitlines():
+        f = cwd / rel
+        try:
+            if f.stat().st_size > 2_000_000:
+                continue
+            if _SECRET_RE.search(f.read_text("utf-8", "ignore")):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _commit_message(instruction: str) -> str:
+    msg = " ".join(instruction.split())[:60].strip()
+    return msg or "Update project"
+
+
+def _gh(*args: str, timeout: int = 120) -> subprocess.CompletedProcess:
+    return subprocess.run(["gh", *args], capture_output=True, text=True, timeout=timeout)
+
+
+def _gh_owner() -> str | None:
+    r = _gh("api", "user", "--jq", ".login", timeout=30)
+    return r.stdout.strip() or None
+
+
+def _enable_pages(owner: str, name: str) -> str | None:
+    """Best-effort: enable GitHub Pages from the main branch root; return URL."""
+    body = '{"source":{"branch":"main","path":"/"}}'
+    try:
+        subprocess.run(
+            ["gh", "api", "--method", "POST", f"repos/{owner}/{name}/pages",
+             "--input", "-"],
+            input=body, capture_output=True, text=True, timeout=60,
+        )
+        # Whether it just got created or already existed, read back the URL.
+        g = _gh("api", f"repos/{owner}/{name}/pages", "--jq", ".html_url", timeout=30)
+        url = g.stdout.strip()
+        return url or f"https://{owner.lower()}.github.io/{name}/"
+    except Exception:
+        return None
+
+
+def _publish_project(cwd: Path, instruction: str) -> str:
+    """Commit and publish a real project to a PUBLIC GitHub repo (+ Pages for
+    sites). Best-effort: returns a short note for the spoken reply and never
+    raises — a publish failure must not fail the build."""
+    if not CONFIG.auto_publish:
+        return ""
+    # Guard: only publish things that live inside the projects dir.
+    projects_root = Path(CONFIG.projects_dir).expanduser().resolve()
+    try:
+        cwd.resolve().relative_to(projects_root)
+    except ValueError:
+        return ""
+    try:
+        _ensure_gitignore(cwd)
+        _git(cwd, "add", "-A")
+        if _has_secrets(cwd):
+            return " I didn't publish it — it looks like it contains secrets."
+        _git(cwd, "commit", "-m", _commit_message(instruction), "--allow-empty")
+
+        name = cwd.name
+        has_remote = _git(cwd, "remote", "get-url", "origin").returncode == 0
+        if not has_remote:
+            r = _gh("repo", "create", name, "--public", "--source", str(cwd),
+                    "--remote=origin", "--push")
+            if r.returncode != 0:
+                detail = (r.stderr or "").strip().splitlines()[-1:] or [""]
+                return f" (Couldn't publish to GitHub: {detail[0][:80]})"
+        else:
+            p = _git(cwd, "push", "origin", "HEAD")
+            if p.returncode != 0:
+                return " (Couldn't push the latest changes to GitHub.)"
+
+        owner = _gh_owner()
+        note = ""
+        if owner:
+            note = f" Published to github.com/{owner}/{name}."
+            if (cwd / "index.html").exists():
+                pages = _enable_pages(owner, name)
+                if pages:
+                    note += f" Live at {pages}"
+        return note
+    except Exception as exc:
+        return f" (Publish step skipped: {type(exc).__name__}.)"
+
+
 @registry.tool(
     name="run_claude_code",
     description=(
@@ -140,13 +269,20 @@ def run_claude_code(instruction: str, project_path: str = "self") -> str:
     cwd.mkdir(parents=True, exist_ok=True)
     is_self = cwd == PROJECT_ROOT
 
+    # Offer a rough ETA from past builds while this one runs.
+    progress.set_estimate(memory.avg_build_seconds())
+
     snapshot = _snapshot(cwd)
     snap_note = f" Snapshot {snapshot[:8]} saved (undo: git -C {cwd} reset --hard {snapshot[:8]})." if snapshot else ""
 
     # Expand the request into a detailed spec with the coder model, then prepend
     # the standing quality preamble. Spec expansion falls back to the raw text.
+    progress.set_phase("Understanding your request")
     spec = _expand_spec(instruction)
     full_instruction = QUALITY_PREAMBLE + spec
+
+    progress.set_phase("Building with Claude Code")
+    build_start = time.monotonic()
     try:
         result = subprocess.run(
             ["claude", "-p", full_instruction, "--dangerously-skip-permissions"],
@@ -160,17 +296,23 @@ def run_claude_code(instruction: str, project_path: str = "self") -> str:
     except subprocess.TimeoutExpired:
         return f"That task ran past the time limit and was stopped.{snap_note}"
 
+    # Record how long the build took, for future ETAs.
+    memory.log_build(int(time.monotonic() - build_start), _commit_message(instruction))
+
     out = (result.stdout or "").strip()
     err = (result.stderr or "").strip()
     summary = out[-1200:] if out else (err[-600:] if err else "Done, no output returned.")
     target = "myself" if is_self else cwd.name
 
     # For real projects (not self-edits): remember it as the active project so
-    # the user can iterate by voice, and open its index.html if it built a site.
+    # the user can iterate by voice, publish it, and open a built site.
     opened_note = ""
+    publish_note = ""
     if not is_self:
         memory.set_active_project(str(cwd))
+        progress.set_phase("Publishing to GitHub")
+        publish_note = _publish_project(cwd, instruction)
         if _open_index(cwd):
             opened_note = " I opened it in a window so you can see it."
 
-    return f"Ran your request on {target}.{snap_note}{opened_note}\n\n{summary}"
+    return f"Ran your request on {target}.{snap_note}{publish_note}{opened_note}\n\n{summary}"
