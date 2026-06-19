@@ -14,10 +14,10 @@ let fadeTimer = null;
 
 // The Deimos canon: black and blood, with a single ember warmth. Red-forward.
 const COLORS = {
-  idle:      [225, 26, 44],   // banked crimson coal
-  listening: [255, 35, 66],   // roused blood-rose
-  thinking:  [255, 90, 46],   // oracular ember
-  speaking:  [255, 58, 42],   // forge-fire red
+  idle:      [210, 22, 40],   // banked crimson coal
+  listening: [255, 35, 62],   // roused blood-rose
+  thinking:  [244, 66, 40],   // oracular ember, redder
+  speaking:  [255, 52, 40],   // forge-fire red
 };
 
 const DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -32,24 +32,15 @@ function setupCanvas() {
 }
 setupCanvas();
 
-const N = 96;
-const particles = Array.from({ length: N }, () => ({
-  a: Math.random() * Math.PI * 2,
-  rf: 0.9 + Math.random() * 0.52,
-  spd: (0.15 + Math.random() * 0.5) * (Math.random() < 0.5 ? 1 : -1),
-  size: 0.8 + Math.random() * 1.9,
-  ph: Math.random() * Math.PI * 2,
-}));
-
-// A tighter, counter-rotating inner ring adds depth and motion.
-const N2 = 52;
-const innerParticles = Array.from({ length: N2 }, () => ({
-  a: Math.random() * Math.PI * 2,
-  rf: 0.48 + Math.random() * 0.3,
-  spd: -(0.25 + Math.random() * 0.6),
-  size: 0.6 + Math.random() * 1.3,
-  ph: Math.random() * Math.PI * 2,
-}));
+// Sleek reticle arcs — thin broken rings that turn slowly around the eye,
+// replacing the scattered ember cloud with deliberate, watching geometry.
+const arcs = [
+  { rf: 1.00, w: 1.6, spd:  0.16, span: 1.55, off: 0.0,            hot: 0.30 },
+  { rf: 1.00, w: 1.6, spd:  0.16, span: 1.55, off: Math.PI,        hot: 0.30 },
+  { rf: 1.28, w: 1.1, spd: -0.11, span: 0.95, off: 0.9,            hot: 0.45 },
+  { rf: 1.28, w: 1.1, spd: -0.11, span: 0.95, off: 0.9 + Math.PI,  hot: 0.45 },
+  { rf: 1.56, w: 0.8, spd:  0.07, span: 0.55, off: 2.1,            hot: 0.55 },
+];
 
 // Expanding rings emitted while speaking, like a voice waveform.
 let ripples = [];
@@ -113,32 +104,21 @@ function frame(now) {
     ctx.restore();
   }
 
-  // 4. Orbiting embers — outer field and counter-rotating inner field.
-  const spinBase = state === "thinking" ? 2.2 : state === "listening" ? 1.0 : 0.5;
+  // 4. Reticle arcs — deliberate broken rings rotating around the eye.
+  const spin = state === "thinking" ? 2.0 : state === "speaking" ? 1.35
+             : state === "listening" ? 1.0 : 0.6;
   ctx.save();
-  ctx.shadowBlur = 9;
-  ctx.shadowColor = rgba(c, 0.9);
-  for (const p of particles) {
-    const ang = p.a + t * p.spd * spinBase;
-    const rr = ringR * p.rf * (1 + react * 0.7);
-    const x = cx + Math.cos(ang) * rr;
-    const y = cy + Math.sin(ang) * rr;
-    const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 1.5 + p.ph));
+  ctx.lineCap = "round";
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = rgba(c, 0.8);
+  for (const arc of arcs) {
+    const rr = ringR * arc.rf * (1 + react * 0.18);
+    const start = arc.off + t * arc.spd * spin;
     ctx.beginPath();
-    ctx.arc(x, y, p.size, 0, Math.PI * 2);
-    ctx.fillStyle = rgba(c, tw * (0.5 + react));
-    ctx.fill();
-  }
-  for (const p of innerParticles) {
-    const ang = p.a + t * p.spd * spinBase;
-    const rr = ringR * p.rf * (1 + react * 0.5);
-    const x = cx + Math.cos(ang) * rr;
-    const y = cy + Math.sin(ang) * rr;
-    const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 2.1 + p.ph));
-    ctx.beginPath();
-    ctx.arc(x, y, p.size, 0, Math.PI * 2);
-    ctx.fillStyle = rgba(hot(c, 0.25), tw * (0.4 + react));
-    ctx.fill();
+    ctx.arc(cx, cy, rr, start, start + arc.span);
+    ctx.lineWidth = arc.w;
+    ctx.strokeStyle = rgba(hot(c, arc.hot * 0.4), 0.2 + react * 0.45);
+    ctx.stroke();
   }
   ctx.restore();
 

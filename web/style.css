@@ -21,18 +21,20 @@ html, body {
   -webkit-font-smoothing: antialiased;
   cursor: default;
   background:
-    radial-gradient(120% 90% at 50% 40%, rgba(176,10,34,0.20) 0%, rgba(94,4,19,0.07) 28%, transparent 58%),
-    radial-gradient(150% 120% at 50% -10%, #160308 0%, #08020480 40%, var(--void) 100%);
+    radial-gradient(110% 78% at 50% 44%, rgba(140,8,28,0.12) 0%, rgba(72,3,15,0.05) 30%, transparent 60%),
+    radial-gradient(95% 72% at 50% 116%, rgba(120,6,24,0.16) 0%, rgba(60,2,12,0.05) 40%, transparent 64%),
+    radial-gradient(150% 120% at 50% -16%, #0d0205 0%, #050103 42%, var(--void) 100%);
 }
 
 /* Slow ambient drift behind everything for a living, ominous depth. */
 body::before {
   content: ""; position: fixed; inset: -20%; pointer-events: none; z-index: 0;
   background:
-    radial-gradient(40% 40% at 20% 28%, rgba(176,10,34,0.14), transparent 70%),
-    radial-gradient(44% 44% at 82% 74%, rgba(94,4,19,0.16), transparent 72%);
-  filter: blur(26px);
-  animation: drift 24s ease-in-out infinite alternate;
+    radial-gradient(38% 38% at 22% 26%, rgba(150,8,30,0.13), transparent 70%),
+    radial-gradient(42% 42% at 80% 72%, rgba(80,4,16,0.15), transparent 72%),
+    radial-gradient(30% 30% at 64% 18%, rgba(110,5,22,0.10), transparent 74%);
+  filter: blur(30px);
+  animation: drift 26s ease-in-out infinite alternate;
 }
 @keyframes drift {
   0%   { transform: translate3d(-2%, -1%, 0) scale(1.02); }
@@ -42,49 +44,48 @@ body::before {
 /* A breathing wash of red light tied to the orb's pulse. */
 body::after {
   content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background: radial-gradient(60% 50% at 50% 46%, rgba(var(--accent-rgb), 0.10), transparent 70%);
-  opacity: 0.7;
+  background: radial-gradient(58% 48% at 50% 47%, rgba(var(--accent-rgb), 0.07), transparent 72%);
+  opacity: 0.6;
   transition: background 0.6s ease;
-  animation: corepulse 5.5s ease-in-out infinite;
+  animation: corepulse 6.5s ease-in-out infinite;
 }
 @keyframes corepulse {
-  0%, 100% { opacity: 0.45; }
-  50%      { opacity: 0.85; }
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 0.58; }
 }
 
 .grid {
-  position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0.4;
+  position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0.22;
   background-image:
-    linear-gradient(rgba(255,31,55,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,31,55,0.05) 1px, transparent 1px);
-  background-size: 54px 54px;
-  mask-image: radial-gradient(circle at 50% 45%, #000 0%, transparent 66%);
-  -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 0%, transparent 66%);
+    linear-gradient(rgba(255,31,55,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,31,55,0.045) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(circle at 50% 46%, #000 0%, transparent 58%);
+  -webkit-mask-image: radial-gradient(circle at 50% 46%, #000 0%, transparent 58%);
 }
 
 /* Faint rising embers — the breath of the war-god's forge. */
 .emberfield {
-  position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0.55;
+  position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0.38;
   background-image:
-    radial-gradient(1.6px 1.6px at 18% 80%, rgba(255,31,55,0.6), transparent),
-    radial-gradient(1px 1px at 36% 94%, rgba(255,90,46,0.5), transparent),
-    radial-gradient(1.6px 1.6px at 64% 88%, rgba(176,10,34,0.6), transparent),
-    radial-gradient(1px 1px at 82% 96%, rgba(255,31,55,0.5), transparent),
-    radial-gradient(1px 1px at 50% 99%, rgba(231,178,74,0.32), transparent);
+    radial-gradient(1.4px 1.4px at 18% 80%, rgba(220,24,42,0.5), transparent),
+    radial-gradient(1px 1px at 36% 94%, rgba(200,40,28,0.4), transparent),
+    radial-gradient(1.4px 1.4px at 64% 88%, rgba(150,8,28,0.5), transparent),
+    radial-gradient(1px 1px at 82% 96%, rgba(220,24,42,0.4), transparent);
   background-repeat: no-repeat;
-  animation: embers 13s linear infinite;
+  animation: embers 16s linear infinite;
 }
 @keyframes embers {
   0%   { transform: translateY(0); opacity: 0; }
-  12%  { opacity: 0.55; }
-  100% { transform: translateY(-48vh); opacity: 0; }
+  14%  { opacity: 0.38; }
+  100% { transform: translateY(-46vh); opacity: 0; }
 }
 
 /* Cinematic dark edges — heavier, to bury the corners in shadow. */
 .vignette {
   position: fixed; inset: 0; pointer-events: none; z-index: 2;
   background:
-    radial-gradient(120% 100% at 50% 44%, transparent 48%, rgba(2,0,1,0.66) 80%, rgba(0,0,0,0.97) 100%);
+    radial-gradient(120% 100% at 50% 44%, transparent 42%, rgba(2,0,1,0.74) 78%, rgba(0,0,0,0.99) 100%);
 }
 
 .hud-frame { position: fixed; inset: 22px; pointer-events: none; z-index: 4; }
@@ -112,17 +113,10 @@ body::after {
   font-family: "Cinzel", serif; font-weight: 700; font-size: 32px;
   letter-spacing: 0.46em; text-indent: 0.46em;
   color: transparent;
-  background: linear-gradient(180deg, #fff0f0 0%, var(--blood) 46%, var(--deep) 100%);
+  background: linear-gradient(180deg, #ffd9d9 0%, var(--blood) 50%, var(--deep) 100%);
   -webkit-background-clip: text; background-clip: text;
-  filter: drop-shadow(0 0 26px rgba(255,31,55,0.6)) drop-shadow(0 1px 0 rgba(0,0,0,0.7));
+  filter: drop-shadow(0 0 18px rgba(255,31,55,0.42)) drop-shadow(0 1px 0 rgba(0,0,0,0.75));
   opacity: 0; animation: rise 1.5s cubic-bezier(.2,.7,.2,1) 0.15s forwards;
-}
-.epithet {
-  position: fixed; top: 94px; left: 0; right: 0; text-align: center; z-index: 4;
-  font-family: "Orbitron", sans-serif; font-weight: 500; font-size: 9px;
-  letter-spacing: 0.54em; text-indent: 0.54em;
-  color: var(--blood); opacity: 0; text-shadow: 0 0 16px rgba(255,31,55,0.55);
-  animation: rise 1.5s cubic-bezier(.2,.7,.2,1) 0.42s forwards;
 }
 @keyframes rise {
   from { opacity: 0; transform: translateY(-10px); letter-spacing: 0.92em; }
@@ -142,14 +136,14 @@ body::after {
 /* Soft CSS halo behind the canvas adds atmospheric bloom and reacts to state. */
 .orb-halo {
   position: absolute; width: 82%; height: 82%; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.26) 0%, rgba(var(--accent-rgb), 0.07) 38%, transparent 70%);
-  filter: blur(26px);
-  animation: halo-pulse 5.5s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.20) 0%, rgba(var(--accent-rgb), 0.05) 40%, transparent 72%);
+  filter: blur(30px);
+  animation: halo-pulse 6.5s ease-in-out infinite;
   transition: background 0.6s ease;
 }
 @keyframes halo-pulse {
-  0%, 100% { transform: scale(0.95); opacity: 0.8; }
-  50%      { transform: scale(1.1); opacity: 1; }
+  0%, 100% { transform: scale(0.95); opacity: 0.7; }
+  50%      { transform: scale(1.08); opacity: 0.92; }
 }
 #orb {
   width: 480px; height: 480px; display: block; position: relative;
@@ -200,9 +194,9 @@ body::after {
 .hint.dim { opacity: 0.2; }
 
 /* State accents — black, blood, and a single ember warmth. Red-forward. */
-body.listening { --accent: #ff2342; --accent-rgb: 255, 35, 66; }
-body.thinking  { --accent: #ff5a2e; --accent-rgb: 255, 90, 46; }
-body.speaking  { --accent: #ff3a2a; --accent-rgb: 255, 58, 42; }
+body.listening { --accent: #ff2340; --accent-rgb: 255, 35, 62; }
+body.thinking  { --accent: #f44228; --accent-rgb: 244, 66, 40; }
+body.speaking  { --accent: #ff3428; --accent-rgb: 255, 52, 40; }
 body.listening .wordmark, body.thinking .wordmark, body.speaking .wordmark {
   filter: drop-shadow(0 0 30px rgba(var(--accent-rgb), 0.65)) drop-shadow(0 1px 0 rgba(0,0,0,0.7));
 }
@@ -211,7 +205,6 @@ body.listening .corner, body.thinking .corner, body.speaking .corner { opacity: 
 @media (max-width: 540px) {
   .stage, #orb { width: 340px; height: 340px; }
   .wordmark { font-size: 25px; top: 40px; }
-  .epithet { top: 82px; }
   .reply { font-size: 20px; }
 }
 
