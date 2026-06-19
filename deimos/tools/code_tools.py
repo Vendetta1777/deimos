@@ -45,8 +45,14 @@ _VISUAL_RE = re.compile(
 )
 
 VISUAL_SELF_NOTE = (
-    "This is a VISUAL change. Edit only web/index.html, web/style.css, "
-    "web/app.js. Do not modify Python logic files. "
+    "This is a VISUAL polish of Deimos's EXISTING voice-assistant interface. "
+    "Improve the current look and feel of web/index.html, web/style.css, and "
+    "web/app.js IN PLACE — refine the orb, colors, typography, layout, spacing, "
+    "and animations. Do NOT turn Deimos into a website, landing page, or "
+    "marketing/product site; do NOT add new pages, sections, or unrelated "
+    "content; keep the existing element ids and the app.js wiring to the "
+    "server working. Edit only those three web/ files; do not modify Python "
+    "logic files. The user's request: "
 )
 
 
@@ -317,11 +323,13 @@ def run_claude_code(instruction: str, project_path: str = "self") -> str:
     # Expand the request into a detailed spec with the coder model, then prepend
     # the standing quality preamble. Spec expansion falls back to the raw text.
     progress.set_phase("Understanding your request")
-    spec = _expand_spec(instruction)
-    # A self-edit about appearance must target the web/ frontend, never the
-    # Python logic. Prepend an explicit visual-scope note in that case.
+    # For a visual self-edit, SKIP the website-oriented spec expansion — it would
+    # reframe Deimos's existing assistant UI as a brand-new website. Instead pass
+    # a scoped note + the raw request so Claude Code refines web/ in place.
     if is_self and _is_visual_self_edit(instruction):
-        spec = VISUAL_SELF_NOTE + spec
+        spec = VISUAL_SELF_NOTE + instruction
+    else:
+        spec = _expand_spec(instruction)
     full_instruction = QUALITY_PREAMBLE + spec
 
     progress.set_phase("Building with Claude Code")
