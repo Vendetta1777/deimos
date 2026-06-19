@@ -12,12 +12,12 @@ let level = 0;
 let target = 0;
 let fadeTimer = null;
 
-// The Deimos canon: black, blood, ember, divine gold. Each state stays inside it.
+// The Deimos canon: black and blood, with a single ember warmth. Red-forward.
 const COLORS = {
-  idle:      [255, 48, 52],   // banked crimson coal
-  listening: [255, 40, 80],   // roused blood-rose
-  thinking:  [231, 178, 74],  // oracular gold
-  speaking:  [255, 122, 52],  // ember orange
+  idle:      [225, 26, 44],   // banked crimson coal
+  listening: [255, 35, 66],   // roused blood-rose
+  thinking:  [255, 90, 46],   // oracular ember
+  speaking:  [255, 58, 42],   // forge-fire red
 };
 
 const DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -172,18 +172,35 @@ function frame(now) {
   ctx.fill();
   ctx.restore();
 
-  // 7. Incandescent core — white-hot heart fading through the state hue.
+  // 7. Incandescent core — molten heart fading through the state hue.
   ctx.save();
-  ctx.shadowBlur = 64 + react * 80;
-  ctx.shadowColor = rgba(c, 0.85);
+  ctx.shadowBlur = 64 + react * 84;
+  ctx.shadowColor = rgba(c, 0.9);
   const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
-  g.addColorStop(0, "rgba(255,251,246,0.98)");
-  g.addColorStop(0.34, rgba(hot(c, 0.5), 0.96));
-  g.addColorStop(0.7, rgba(c, 0.9));
+  g.addColorStop(0, "rgba(255,247,242,0.98)");
+  g.addColorStop(0.28, rgba(hot(c, 0.55), 0.97));
+  g.addColorStop(0.62, rgba(c, 0.92));
   g.addColorStop(1, rgba(c, 0));
   ctx.beginPath();
   ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
   ctx.fillStyle = g;
+  ctx.fill();
+  ctx.restore();
+
+  // 7b. Dark pupil — a watching void at the heart, with a single hot catch-light.
+  const pupilR = coreR * (0.34 - react * 0.12);
+  ctx.save();
+  const pupil = ctx.createRadialGradient(cx, cy, 0, cx, cy, pupilR);
+  pupil.addColorStop(0, "rgba(8,1,3,0.96)");
+  pupil.addColorStop(0.72, "rgba(20,2,6,0.82)");
+  pupil.addColorStop(1, rgba(c, 0));
+  ctx.beginPath();
+  ctx.arc(cx, cy, pupilR, 0, Math.PI * 2);
+  ctx.fillStyle = pupil;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx - pupilR * 0.32, cy - pupilR * 0.34, pupilR * 0.28, 0, Math.PI * 2);
+  ctx.fillStyle = rgba(hot(c, 0.7), 0.5 + react * 0.4);
   ctx.fill();
   ctx.restore();
 
