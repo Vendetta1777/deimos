@@ -33,6 +33,26 @@ QUALITY_PREAMBLE = (
     "rather than asking. Request: "
 )
 
+# When Deimos edits ITSELF and the request is about how it looks, the change
+# belongs in the web/ frontend — not the Python brain/config. We detect that and
+# steer Claude Code to the right files. Word boundaries keep "ui" from matching
+# inside words like "build".
+_VISUAL_RE = re.compile(
+    r"\b(look|looks|looking|visual|visuals|visually|interface|orb|design|"
+    r"redesign|colou?r|colou?rs|theme|themes|ui|ux|appearance|layout|style|"
+    r"styling|animation|animations)\b",
+    re.IGNORECASE,
+)
+
+VISUAL_SELF_NOTE = (
+    "This is a VISUAL change. Edit only web/index.html, web/style.css, "
+    "web/app.js. Do not modify Python logic files. "
+)
+
+
+def _is_visual_self_edit(instruction: str) -> bool:
+    return bool(_VISUAL_RE.search(instruction or ""))
+
 
 def _resolve_project(project_path: str) -> Path:
     if not project_path or project_path.lower() in {"self", "deimos", "yourself"}:
@@ -298,6 +318,10 @@ def run_claude_code(instruction: str, project_path: str = "self") -> str:
     # the standing quality preamble. Spec expansion falls back to the raw text.
     progress.set_phase("Understanding your request")
     spec = _expand_spec(instruction)
+    # A self-edit about appearance must target the web/ frontend, never the
+    # Python logic. Prepend an explicit visual-scope note in that case.
+    if is_self and _is_visual_self_edit(instruction):
+        spec = VISUAL_SELF_NOTE + spec
     full_instruction = QUALITY_PREAMBLE + spec
 
     progress.set_phase("Building with Claude Code")
