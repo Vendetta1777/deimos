@@ -60,6 +60,30 @@ def _is_visual_self_edit(instruction: str) -> bool:
     return bool(_VISUAL_RE.search(instruction or ""))
 
 
+# Generic "glow-up" words. For a SELF edit, "make yourself better/nicer/cooler"
+# almost always means "improve how you look", so bias these to the visual path.
+_SELF_GLOWUP_RE = re.compile(
+    r"\b(better|nicer|prettier|cooler|sleeker|slicker|cleaner|polish|fancy|"
+    r"modern|moderni[sz]e|upgrade|glow.?up|spruce|revamp)\b",
+    re.IGNORECASE,
+)
+
+
+def _wants_self_glowup(instruction: str) -> bool:
+    return bool(_SELF_GLOWUP_RE.search(instruction or ""))
+
+
+# Fallback note for NON-visual self-edits (e.g. "add a timer to yourself"): keep
+# Claude Code editing Deimos's real files and never let a self-edit become a site.
+SELF_NOTE = (
+    "You are editing Deimos ITSELF — a local Python voice assistant (a FastAPI "
+    "server plus a web/ frontend). Make the requested change to the appropriate "
+    "existing files. Do NOT turn Deimos into a website, landing page, or "
+    "marketing/product site, and do not scaffold a new project. The user's "
+    "request: "
+)
+
+
 def _resolve_project(project_path: str) -> Path:
     if not project_path or project_path.lower() in {"self", "deimos", "yourself"}:
         return PROJECT_ROOT
@@ -323,11 +347,16 @@ def run_claude_code(instruction: str, project_path: str = "self") -> str:
     # Expand the request into a detailed spec with the coder model, then prepend
     # the standing quality preamble. Spec expansion falls back to the raw text.
     progress.set_phase("Understanding your request")
-    # For a visual self-edit, SKIP the website-oriented spec expansion — it would
-    # reframe Deimos's existing assistant UI as a brand-new website. Instead pass
-    # a scoped note + the raw request so Claude Code refines web/ in place.
-    if is_self and _is_visual_self_edit(instruction):
-        spec = VISUAL_SELF_NOTE + instruction
+    # Self-edits NEVER go through the website-oriented spec expansion — it would
+    # reframe Deimos as a brand-new website. Visual (or generic "make yourself
+    # better") requests refine web/ in place; other self-edits get a scoped note
+    # that keeps Claude Code in Deimos's real files. Only real external projects
+    # get the full website/product spec expansion.
+    if is_self:
+        if _is_visual_self_edit(instruction) or _wants_self_glowup(instruction):
+            spec = VISUAL_SELF_NOTE + instruction
+        else:
+            spec = SELF_NOTE + instruction
     else:
         spec = _expand_spec(instruction)
     full_instruction = QUALITY_PREAMBLE + spec
