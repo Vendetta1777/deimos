@@ -13,6 +13,7 @@ from deimos.brain.llm import Brain
 import deimos.tools.builtin  # noqa: F401  registers the built-in tools on import
 import deimos.tools.memory_tools  # noqa: F401  registers remember/recall
 import deimos.tools.skills  # noqa: F401  registers web/weather/system/notes/etc.
+import deimos.tools.system_tools  # noqa: F401  registers open_url/media/volume/run_command
 import deimos.tools.code_tools  # noqa: F401  registers run_claude_code
 
 
