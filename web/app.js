@@ -12,6 +12,16 @@ let level = 0;
 let target = 0;
 let fadeTimer = null;
 
+// Eased visual quantities so state changes glide instead of snapping.
+let spin = 0.6;          // current rotation speed, eased toward spinTarget
+let spinAngle = 0;       // accumulated rotation, so eased speed never jumps angle
+let lastNow = performance.now();
+let renderC = [210, 22, 40]; // currently-rendered color, eased toward COLORS[state]
+
+// Idle "blink" — a rare, quick dim, so the eye reads as alive and watching.
+let nextBlink = 2.4 + Math.random() * 5;
+let blinkStart = -1;
+
 // The Deimos canon: black and blood, with a single ember warmth. Red-forward.
 const COLORS = {
   idle:      [210, 22, 40],   // banked crimson coal
@@ -61,19 +71,36 @@ function frame(now) {
   const t = (now - t0) / 1000;
   level += (target - level) * 0.15;
   ctx.clearRect(0, 0, SIZE, SIZE);
-  const c = COLORS[state] || COLORS.idle;
+
+  // Ease the rendered color toward the target state's hue so transitions glide.
+  const tc = COLORS[state] || COLORS.idle;
+  for (let i = 0; i < 3; i++) renderC[i] += (tc[i] - renderC[i]) * 0.08;
+  const c = renderC;
 
   const breathe = 1 + Math.sin(t * 1.4) * 0.045;
   let react = 0;
   if (state === "listening") react = level * 0.65;
   else if (state === "speaking") react = (0.5 + 0.5 * Math.abs(Math.sin(t * 7))) * 0.34;
   else if (state === "thinking") react = 0.06 + 0.06 * Math.sin(t * 4);
-  const coreR = baseR * (breathe + react);
+
+  // Idle blink: schedule rare quick dims; blinkEnv is 0 (open) .. 1 (shut).
+  let blinkEnv = 0;
+  if (state === "idle") {
+    if (blinkStart < 0 && t >= nextBlink) blinkStart = t;
+    if (blinkStart >= 0) {
+      const bp = (t - blinkStart) / 0.34; // ~340ms blink
+      if (bp >= 1) { blinkStart = -1; nextBlink = t + 4 + Math.random() * 7; }
+      else blinkEnv = Math.sin(bp * Math.PI); // smooth dim-and-recover
+    }
+  } else { blinkStart = -1; nextBlink = t + 4 + Math.random() * 7; }
+
+  const coreR = baseR * (breathe + react) * (1 - blinkEnv * 0.5);
+  const lum = 1 - blinkEnv * 0.78; // overall brightness during a blink
 
   // 1. Forge aura — a vast soft halo that breathes and flares with the orb.
   const aura = ctx.createRadialGradient(cx, cy, coreR * 0.3, cx, cy, SIZE * 0.52);
-  aura.addColorStop(0, rgba(c, 0.18 + react * 0.2));
-  aura.addColorStop(0.42, rgba(c, 0.05 + react * 0.06));
+  aura.addColorStop(0, rgba(c, (0.18 + react * 0.2) * lum));
+  aura.addColorStop(0.42, rgba(c, (0.05 + react * 0.06) * lum));
   aura.addColorStop(1, rgba(c, 0));
   ctx.fillStyle = aura;
   ctx.fillRect(0, 0, SIZE, SIZE);
@@ -105,19 +132,22 @@ function frame(now) {
   }
 
   // 4. Reticle arcs — deliberate broken rings rotating around the eye.
-  const spin = state === "thinking" ? 2.0 : state === "speaking" ? 1.35
+  // Ease the spin speed toward its target so the rings spool up/down smoothly.
+  const spinTarget = state === "thinking" ? 2.0 : state === "speaking" ? 1.35
              : state === "listening" ? 1.0 : 0.6;
+  spin += (spinTarget - spin) * 0.04;
+  spinAngle += (now - lastNow) / 1000 * spin; // accumulate so eased speed never jumps angle
   ctx.save();
   ctx.lineCap = "round";
   ctx.shadowBlur = 10;
   ctx.shadowColor = rgba(c, 0.8);
   for (const arc of arcs) {
     const rr = ringR * arc.rf * (1 + react * 0.18);
-    const start = arc.off + t * arc.spd * spin;
+    const start = arc.off + spinAngle * arc.spd;
     ctx.beginPath();
     ctx.arc(cx, cy, rr, start, start + arc.span);
     ctx.lineWidth = arc.w;
-    ctx.strokeStyle = rgba(hot(c, arc.hot * 0.4), 0.2 + react * 0.45);
+    ctx.strokeStyle = rgba(hot(c, arc.hot * 0.4), (0.2 + react * 0.45) * lum);
     ctx.stroke();
   }
   ctx.restore();
@@ -154,17 +184,36 @@ function frame(now) {
 
   // 7. Incandescent core — molten heart fading through the state hue.
   ctx.save();
-  ctx.shadowBlur = 64 + react * 84;
-  ctx.shadowColor = rgba(c, 0.9);
+  ctx.shadowBlur = (64 + react * 84) * lum;
+  ctx.shadowColor = rgba(c, 0.9 * lum);
   const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
-  g.addColorStop(0, "rgba(255,247,242,0.98)");
-  g.addColorStop(0.28, rgba(hot(c, 0.55), 0.97));
-  g.addColorStop(0.62, rgba(c, 0.92));
+  g.addColorStop(0, rgba([255, 247, 242], 0.98 * lum));
+  g.addColorStop(0.28, rgba(hot(c, 0.55), 0.97 * lum));
+  g.addColorStop(0.62, rgba(c, 0.92 * lum));
   g.addColorStop(1, rgba(c, 0));
   ctx.beginPath();
   ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
   ctx.fillStyle = g;
   ctx.fill();
+  ctx.restore();
+
+  // 7a. Iris striations — faint radial fibers give the core real iris texture.
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreR * 0.98, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.lineWidth = 0.8;
+  const fibers = 40;
+  const drift = spinAngle * 0.05;
+  for (let i = 0; i < fibers; i++) {
+    const a = (i / fibers) * Math.PI * 2 + drift;
+    const wob = 0.85 + 0.15 * Math.sin(i * 1.7 + t * 0.6);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * coreR * 0.30, cy + Math.sin(a) * coreR * 0.30);
+    ctx.lineTo(cx + Math.cos(a) * coreR * wob, cy + Math.sin(a) * coreR * wob);
+    ctx.strokeStyle = rgba(hot(c, 0.4), (i % 2 ? 0.05 : 0.09) * lum);
+    ctx.stroke();
+  }
   ctx.restore();
 
   // 7b. Dark pupil — a watching void at the heart, with a single hot catch-light.
@@ -180,7 +229,7 @@ function frame(now) {
   ctx.fill();
   ctx.beginPath();
   ctx.arc(cx - pupilR * 0.32, cy - pupilR * 0.34, pupilR * 0.28, 0, Math.PI * 2);
-  ctx.fillStyle = rgba(hot(c, 0.7), 0.5 + react * 0.4);
+  ctx.fillStyle = rgba(hot(c, 0.7), (0.5 + react * 0.4) * lum);
   ctx.fill();
   ctx.restore();
 
@@ -191,10 +240,11 @@ function frame(now) {
   ctx.shadowColor = rgba(hot(c, 0.4), 0.9);
   ctx.beginPath();
   ctx.arc(cx, cy, coreR * 1.16, 0, Math.PI * 2);
-  ctx.strokeStyle = rgba(hot(c, 0.35), 0.5 + react * 0.4);
+  ctx.strokeStyle = rgba(hot(c, 0.35), (0.5 + react * 0.4) * lum);
   ctx.stroke();
   ctx.restore();
 
+  lastNow = now;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -202,6 +252,9 @@ requestAnimationFrame(frame);
 let ws;
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
+  // On every (re)connect, force the UI back to a clickable idle state so a
+  // server restart or dropped socket can never leave the orb wedged.
+  ws.onopen = () => setState("idle");
   ws.onmessage = (e) => {
     const d = JSON.parse(e.data);
     if (d.type === "state") setState(d.state);
@@ -213,7 +266,12 @@ function connect() {
 
 function setState(s) {
   state = s;
-  statusEl.textContent = s;
+  if (statusEl.textContent !== s) {
+    statusEl.textContent = s;
+    statusEl.classList.remove("flip");
+    void statusEl.offsetWidth; // restart the crossfade animation
+    statusEl.classList.add("flip");
+  }
   document.body.className = s;
   hintEl.classList.toggle("dim", s !== "idle");
   if (s === "listening") startMic();
