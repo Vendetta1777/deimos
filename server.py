@@ -21,6 +21,7 @@ import re
 import subprocess
 import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
@@ -32,10 +33,12 @@ from deimos.audio.stt import SpeechToText
 from deimos.audio.tts import TextToSpeech
 from deimos.brain.llm import Brain
 from deimos.progress import progress
+from deimos import wakeword
 import deimos.tools.builtin  # noqa: F401  registers the built-in tools
 import deimos.tools.memory_tools  # noqa: F401  registers remember/recall
 import deimos.tools.skills  # noqa: F401  registers web/weather/system/notes/etc.
 import deimos.tools.system_tools  # noqa: F401  registers open_url/media/volume/run_command
+import deimos.tools.vision  # noqa: F401  registers see_screen
 import deimos.tools.code_tools  # noqa: F401  registers run_claude_code
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -58,10 +61,52 @@ tts = TextToSpeech()
 brain = Brain()
 busy = asyncio.Lock()
 
+# Wake-word state. The listener is created lazily on the first WebSocket
+# connection (so we have the running loop) and only if a Picovoice key exists.
+_loop = None
+_trigger = None  # fn that starts a "listen" turn on the active connection
+_wake = None
+
+
+def _ensure_wakeword() -> None:
+    global _loop, _wake
+    if _wake is not None or not wakeword.is_configured():
+        return
+    _loop = asyncio.get_running_loop()
+
+    def on_wake() -> None:
+        # Detected in the wake thread (which paused itself); hop to the loop and
+        # start a turn if there's a connection and nothing already running.
+        # Otherwise resume the listener so it doesn't get stuck paused.
+        if _trigger is not None and not busy.locked():
+            _loop.call_soon_threadsafe(_trigger)
+        elif _wake is not None:
+            _wake.resume()
+
+    _wake = wakeword.WakeWord(on_wake)
+    _wake.start()
+
+
+@asynccontextmanager
+async def _wake_paused():
+    """Release the wake-word mic for the duration of a turn, then resume."""
+    if _wake is not None:
+        _wake.pause()
+    try:
+        yield
+    finally:
+        if _wake is not None:
+            _wake.resume()
+
 
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
+
+
+@app.get("/mini")
+async def mini() -> FileResponse:
+    return FileResponse(WEB_DIR / "mini.html")
 
 
 @app.websocket("/ws")
@@ -69,15 +114,42 @@ async def ws(socket: WebSocket) -> None:
     await socket.accept()
 
     stop_recording = threading.Event()
+    current: "asyncio.Task | None" = None  # the in-flight turn, so we can cancel it
 
     async def state(name: str) -> None:
-        await socket.send_json({"type": "state", "state": name})
+        try:
+            await socket.send_json({"type": "state", "state": name})
+        except Exception:
+            pass  # socket closed mid-turn; nothing to send to
 
     async def line(role: str, text: str) -> None:
-        await socket.send_json({"type": "transcript", "role": role, "text": text})
+        try:
+            await socket.send_json({"type": "transcript", "role": role, "text": text})
+        except Exception:
+            pass
+
+    async def push_progress() -> None:
+        # Stream live progress (phase + elapsed) while a turn runs in a worker
+        # thread, so the UI isn't frozen on "thinking" during builds.
+        try:
+            while True:
+                phase, elapsed = progress.snapshot()
+                try:
+                    await socket.send_json({
+                        "type": "progress",
+                        "phase": phase or "Thinking",
+                        "elapsed": elapsed,
+                        "estimate": progress.estimate,
+                    })
+                except Exception:
+                    return  # socket closed
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
 
     async def handle(action: str, text: str) -> None:
-        async with busy:
+        async with busy, _wake_paused():
+            # First user input for this exchange.
             if action == "listen":
                 stop_recording.clear()
                 await state("listening")
@@ -91,42 +163,55 @@ async def ws(socket: WebSocket) -> None:
                 user_text = text
                 await state("thinking")
 
-            if not user_text:
-                await state("idle")
-                return
+            # Voice turns can continue hands-free: after each spoken reply we
+            # reopen the mic for a brief follow-up window. Silence ends it.
+            voice = action == "listen"
+            for _ in range(40):  # safety cap on consecutive auto follow-ups
+                if not user_text:
+                    await state("idle")
+                    return
 
-            await line("you", user_text)
+                await line("you", user_text)
 
-            # Stream live progress (phase + elapsed) while the turn runs in a
-            # worker thread, so the UI isn't frozen on "thinking" during builds.
-            progress.start()
-
-            async def push_progress() -> None:
+                progress.start()
+                prog_task = asyncio.create_task(push_progress())
                 try:
-                    while True:
-                        phase, elapsed = progress.snapshot()
-                        await socket.send_json({
-                            "type": "progress",
-                            "phase": phase or "Thinking",
-                            "elapsed": elapsed,
-                            "estimate": progress.estimate,
-                        })
-                        await asyncio.sleep(1)
-                except asyncio.CancelledError:
-                    pass
+                    reply = await asyncio.to_thread(brain.ask, user_text)
+                finally:
+                    prog_task.cancel()
+                    progress.stop()
 
-            prog_task = asyncio.create_task(push_progress())
-            try:
-                reply = await asyncio.to_thread(brain.ask, user_text)
-            finally:
-                prog_task.cancel()
-                progress.stop()
+                await line("deimos", reply)
 
-            await line("deimos", reply)
+                await state("speaking")
+                await asyncio.to_thread(tts.speak, reply)
+                await state("idle")
 
-            await state("speaking")
-            await asyncio.to_thread(tts.speak, reply)
+                if not (voice and CONFIG.conversation_mode):
+                    return
+
+                # Hands-free follow-up: reopen the mic; quiet = end conversation.
+                stop_recording.clear()
+                await state("listening")
+                audio = await asyncio.to_thread(
+                    stt.record, stop_recording, CONFIG.conversation_followup_timeout
+                )
+                if stop_recording.is_set():
+                    await state("idle")
+                    return
+                await state("thinking")
+                user_text = await asyncio.to_thread(stt.transcribe, audio)
+
             await state("idle")
+
+    def launch(action: str, text: str = "") -> None:
+        nonlocal current
+        current = asyncio.create_task(handle(action, text))
+
+    # Let the wake word start a turn on this connection ("Hey Deimos").
+    global _trigger
+    _trigger = lambda: launch("listen", "")
+    _ensure_wakeword()
 
     try:
         await state("idle")
@@ -144,14 +229,23 @@ async def ws(socket: WebSocket) -> None:
                 continue
 
             if action == "listen":
-                asyncio.create_task(handle("listen", ""))
+                launch("listen", "")
             elif action == "text":
-                text = (msg.get("text") or "").strip()
-                asyncio.create_task(handle("text", text))
+                launch("text", (msg.get("text") or "").strip())
             else:
                 await state("idle")
     except WebSocketDisconnect:
         pass
+    finally:
+        _trigger = None  # this connection is gone; wake has nowhere to fire
+        # The browser closed mid-turn: stop any in-flight recording and cancel the
+        # turn task, so it can't keep holding the global busy lock or the mic and
+        # wedge the next connection's tap-to-talk. Resume the wake listener too.
+        stop_recording.set()
+        if current is not None and not current.done():
+            current.cancel()
+        if _wake is not None:
+            _wake.resume()
 
 
 # --------------------------------------------------------------------------- #
