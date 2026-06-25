@@ -87,6 +87,22 @@ body::after {
   background:
     radial-gradient(120% 100% at 50% 44%, transparent 42%, rgba(2,0,1,0.74) 78%, rgba(0,0,0,0.99) 100%);
 }
+/* Film grain — breaks up the flat gradients so the dark reads as cinematic,
+   not digital. A tiled SVG noise tile, drifting slowly. */
+.vignette::before {
+  content: ""; position: absolute; inset: -50%; pointer-events: none; opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  animation: grain 5s steps(5) infinite;
+}
+@keyframes grain {
+  0%   { transform: translate(0, 0); }
+  20%  { transform: translate(-3%, 2%); }
+  40%  { transform: translate(2%, -3%); }
+  60%  { transform: translate(-2%, -2%); }
+  80%  { transform: translate(3%, 1%); }
+  100% { transform: translate(0, 0); }
+}
 
 .hud-frame { position: fixed; inset: 22px; pointer-events: none; z-index: 4; }
 .corner {
@@ -159,6 +175,12 @@ body::after {
   color: var(--accent); text-shadow: 0 0 20px rgba(var(--accent-rgb), 0.7);
   transition: color 0.5s ease, text-shadow 0.5s ease; margin-top: -20px;
 }
+/* Each state change blur-crossfades the label in, matching the orb's easing. */
+.status.flip { animation: statusin 0.55s cubic-bezier(.2,.7,.2,1); }
+@keyframes statusin {
+  0%   { opacity: 0.15; filter: blur(5px); letter-spacing: 0.72em; }
+  100% { opacity: 1; filter: blur(0); letter-spacing: 0.52em; }
+}
 
 .progress {
   font-family: "Orbitron", sans-serif; font-size: 10px;
@@ -174,14 +196,19 @@ body::after {
   margin-top: 18px; max-width: 720px; min-height: 96px; text-align: center; padding: 0 24px;
 }
 .said {
-  font-size: 15px; font-weight: 300; letter-spacing: 0.06em;
-  color: var(--muted); text-transform: lowercase; margin-bottom: 12px;
+  font-size: 14px; font-weight: 400; letter-spacing: 0.14em;
+  color: var(--muted); text-transform: lowercase; margin-bottom: 14px;
+  text-wrap: balance;
   opacity: 0; transform: translateY(4px); transition: opacity 0.5s ease, transform 0.5s ease;
 }
+/* A faint pair of guillemets frames the user's words as a quiet aside. */
+.said.show::before { content: "\00ab\2009"; opacity: 0.5; }
+.said.show::after  { content: "\2009\00bb"; opacity: 0.5; }
 .reply {
   font-family: "Cinzel", serif; font-weight: 400;
-  font-size: 23px; line-height: 1.52; letter-spacing: 0.015em;
+  font-size: 23px; line-height: 1.58; letter-spacing: 0.02em;
   color: var(--text); text-shadow: 0 0 30px rgba(var(--accent-rgb), 0.34);
+  text-wrap: balance;
   opacity: 0; transform: translateY(6px); transition: opacity 0.7s ease, transform 0.7s ease;
 }
 .said.show, .reply.show { opacity: 1; transform: translateY(0); }
@@ -209,5 +236,6 @@ body.listening .corner, body.thinking .corner, body.speaking .corner { opacity: 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body::before, body::after, .emberfield, .orb-halo { animation: none; }
+  body::before, body::after, .emberfield, .orb-halo,
+  .vignette::before, .status.flip { animation: none; }
 }
