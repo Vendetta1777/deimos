@@ -12,6 +12,7 @@ playlists need user login (a later upgrade).
 """
 import base64
 import json
+import re
 import subprocess
 import time
 import urllib.parse
@@ -106,15 +107,43 @@ def _search(query: str, qtype: str) -> tuple[str, str, str] | None:
 
 
 def _play_uri(uri: str) -> bool:
+    # Primary: AppleScript tells Spotify to play the exact track (auto-launches).
     script = f'tell application "Spotify"\n  activate\n  play track "{uri}"\nend tell'
     try:
         r = subprocess.run(
             ["osascript", "-e", script],
             capture_output=True, text=True, timeout=20, check=False,
         )
-        return r.returncode == 0
+        if r.returncode == 0:
+            return True
+    except Exception:
+        pass
+    # Fallback: hand the URI to Spotify via its URL scheme. This needs no
+    # Automation permission, so it still works if AppleScript control is blocked.
+    try:
+        subprocess.run(["open", uri], capture_output=True, timeout=10, check=False)
+        return True
     except Exception:
         return False
+
+
+def _smart_query(query: str, qtype: str) -> str:
+    """Turn a spoken phrase into a precise Spotify query.
+
+    Natural phrasing like "Chicago by Michael Jackson" otherwise matches junk
+    (e.g. a commentary track literally containing the word "by"), so we split on
+    " by " into field filters: track:"Chicago" artist:"Michael Jackson".
+    """
+    q = (query or "").strip()
+    q = re.sub(r"\s+on\s+spotify\s*$", "", q, flags=re.IGNORECASE)  # drop "...on spotify"
+    q = re.sub(r"^\s*play\s+", "", q, flags=re.IGNORECASE)          # drop leading "play"
+    m = re.search(r"^(.*?)\s+by\s+(.+)$", q, flags=re.IGNORECASE)
+    if m and qtype in ("track", "album"):
+        title, artist = m.group(1).strip(), m.group(2).strip()
+        if title and artist:
+            field = "album" if qtype == "album" else "track"
+            return f'{field}:"{title}" artist:"{artist}"'
+    return q
 
 
 def play(query: str, kind: str = "song") -> str | None:
@@ -124,7 +153,8 @@ def play(query: str, kind: str = "song") -> str | None:
     can fall back to another player).
     """
     qtype = _KIND_TO_TYPE.get((kind or "song").lower(), "track")
-    hit = _search(query, qtype)
+    # Try the precise field-filtered query first, then the raw phrase as a fallback.
+    hit = _search(_smart_query(query, qtype), qtype) or _search(query, qtype)
     if not hit:
         return None
     uri, name, who = hit

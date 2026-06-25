@@ -23,6 +23,14 @@ class Config:
     llm_num_ctx: int = 8192
     # Cap reply length — spoken answers are short, so this prevents runaway gen.
     llm_num_predict: int = 512
+    # Local vision model for screen sight (see_screen). Small + fast; loaded only
+    # when used and unloaded soon after, to stay light on RAM.
+    vision_model: str = "moondream"
+    vision_keep_alive: str = "1m"
+    # Cloud model (Claude API) for high-quality vision + hard reasoning. Used
+    # only when an API key is configured (~/deimos/.anthropic.json). Defaults to
+    # the strongest model; switch to a cheaper one here if you want to save cost.
+    cloud_model: str = "claude-opus-4-8"
     # A larger model used ONLY to compose detailed build specs for Claude Code
     # (not for everyday chat), so coding quality is high without slowing chat.
     coder_model: str = "qwen2.5:7b"
@@ -73,9 +81,12 @@ class Config:
         "tool instead of guessing, and never read tool output verbatim — answer "
         "in your own concise, natural voice. "
         "You can control this Mac. To open an app use open_app; to open a "
-        "website use open_url; to play a specific song, artist, or playlist use "
+        "website use open_url; to see what's on the user's screen (read text, "
+        "describe it, answer questions about what's displayed) use see_screen; "
+        "to play a specific song, artist, or playlist use "
         "play_music; to play, pause, or skip use media_control; to set volume "
-        "use set_volume. For anything else on the computer, use run_command with "
+        "use set_volume. All music is on Spotify — never use Apple Music. For "
+        "anything else on the computer, use run_command with "
         "a shell command. Destructive or system-level commands will ask the user "
         "for confirmation automatically — still attempt them; don't refuse. "
         "Reply in plain spoken sentences. Do not use markdown, asterisks, bullet "
@@ -99,6 +110,20 @@ class Config:
     silence_threshold: float = 0.006  # RMS below this counts as silence (less twitchy)
     silence_duration: float = 2.5     # seconds of silence that ends a turn (allow pauses)
     max_record_seconds: float = 45.0  # room for long, detailed instructions
+
+    # --- Hands-free conversation ---
+    # After a spoken reply, reopen the mic so you can follow up without tapping.
+    # Staying quiet (no speech within the follow-up window) ends the exchange.
+    conversation_mode: bool = True
+    conversation_followup_timeout: float = 6.0  # secs to wait for you to start talking
+
+    # --- Wake word (openWakeWord, fully local, no account) ---
+    # When enabled, an always-on listener starts a turn when it hears the phrase.
+    # "hey_jarvis" is a free pre-trained model. Set enabled False to stop the
+    # always-on mic. Raise the threshold if it false-triggers; lower if it misses.
+    wake_word_enabled: bool = True
+    wake_word: str = "hey_jarvis"
+    wake_word_threshold: float = 0.5
 
     # --- Text to speech ---
     # Deimos auto-picks the most natural voice available, in this order:

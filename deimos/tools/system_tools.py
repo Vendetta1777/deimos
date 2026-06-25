@@ -13,12 +13,18 @@ Design rules (shared with the other tool modules):
 """
 import re
 import subprocess
+import urllib.parse
+from pathlib import Path
 
 from deimos.tools.registry import registry
 
 
 def _run(cmd: list[str], timeout: float = 15.0) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+
+
+def _spotify_installed() -> bool:
+    return Path("/Applications/Spotify.app").exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -75,8 +81,8 @@ def set_volume(level: int) -> str:
 @registry.tool(
     name="media_control",
     description=(
-        "Control music playback: play, pause, next, or previous. Targets "
-        "Spotify if it's running, otherwise the Music app."
+        "Control Spotify playback: play (resume), pause, next, or previous. "
+        "For playing a SPECIFIC song/artist/playlist, use play_music instead."
     ),
     parameters={
         "type": "object",
@@ -106,31 +112,15 @@ def media_control(action: str) -> str:
         return "I can play, pause, skip to next, or go to previous."
     cmd = verbs[action]
 
-    # Prefer whichever player is already running; Spotify first, else Music.
-    script = f'''
-    tell application "System Events"
-        set hasSpotify to (exists (processes where name is "Spotify"))
-        set hasMusic to (exists (processes where name is "Music"))
-    end tell
-    if hasSpotify then
-        tell application "Spotify" to {cmd}
-        return "Spotify"
-    else if hasMusic then
-        tell application "Music" to {cmd}
-        return "Music"
-    else
-        return "none"
-    end if
-    '''
+    # Music is always Spotify (never Apple Music). `tell` launches it if needed.
+    if not _spotify_installed():
+        return "Spotify isn't installed, so I can't control music."
     try:
-        result = _run(["osascript", "-e", script])
+        result = _run(["osascript", "-e", f'tell application "Spotify" to {cmd}'])
     except Exception as exc:
-        return f"Couldn't control playback ({exc})."
-    app = (result.stdout or "").strip()
-    if app == "none":
-        return "Neither Spotify nor Music is running."
+        return f"Couldn't control Spotify ({exc})."
     if result.returncode != 0:
-        return f"Couldn't control playback ({(result.stderr or '').strip()[:80]})."
+        return f"Couldn't control Spotify ({(result.stderr or '').strip()[:80]})."
     pretty = {
         "play": "Playing",
         "pause": "Paused",
@@ -138,7 +128,7 @@ def media_control(action: str) -> str:
         "next track": "Skipped ahead on",
         "previous track": "Went back on",
     }.get(cmd, "Did that on")
-    return f"{pretty} {app}."
+    return f"{pretty} on Spotify."
 
 
 def _osa_escape(s: str) -> str:
@@ -173,63 +163,28 @@ def play_music(query: str, kind: str = "song") -> str:
     if not query:
         return "What would you like me to play?"
 
-    # If Spotify is set up (credentials present), search + play it for real.
-    # Falls through to Apple Music on any failure.
+    # Music is ALWAYS Spotify — never Apple Music. Search the Spotify catalog
+    # for the exact match and play it on the desktop app.
     from deimos.tools import spotify
-    if spotify.is_configured():
-        played = spotify.play(query, kind)
-        if played:
-            return played
-
-    q = _osa_escape(query)
-    kind = (kind or "song").strip().lower()
-    if kind in ("track", "tune"):
-        kind = "song"
-
-    # Build the Apple Music search/play body for the requested kind.
-    if kind == "playlist":
-        find = (
-            f'if (exists playlist "{q}") then\n'
-            f'  play playlist "{q}"\n'
-            f'  return "Playing your " & "{q}" & " playlist"\n'
-            f'else\n'
-            f'  set pls to (every playlist whose name contains "{q}")\n'
-            f'  if pls is {{}} then return "notfound"\n'
-            f'  play (item 1 of pls)\n'
-            f'  return "Playing the " & (name of item 1 of pls) & " playlist"\n'
-            f'end if'
+    if not spotify.is_configured():
+        return (
+            "Spotify isn't set up yet. Add your Spotify Client ID and Secret to "
+            "~/deimos/.spotify.json and I'll play music for you."
         )
-    else:
-        field = {"artist": "artist", "album": "album"}.get(kind, "name")
-        find = (
-            f'set matches to (every track whose {field} contains "{q}")\n'
-            f'if matches is {{}} then return "notfound"\n'
-            f'play (item 1 of matches)\n'
-            f'return "Playing " & (name of item 1 of matches) & " by " & '
-            f'(artist of item 1 of matches)'
-        )
+    if not _spotify_installed():
+        return "I couldn't find the Spotify app on this Mac to play music."
 
-    script = f'tell application "Music"\n  launch\n  {find}\nend tell'
-    try:
-        result = _run(["osascript", "-e", script], timeout=20)
-    except Exception as exc:
-        return f"Couldn't reach Apple Music ({exc})."
+    played = spotify.play(query, kind)
+    if played:
+        return played
 
-    out = (result.stdout or "").strip()
-    if result.returncode == 0 and out and out != "notfound":
-        return out + "."
-
-    # Not in the Apple Music library: fall back to opening a search.
-    import urllib.parse
+    # Couldn't match/start it — open a Spotify search rather than guessing.
     term = urllib.parse.quote(query)
     try:
-        if subprocess.run(["test", "-d", "/Applications/Spotify.app"]).returncode == 0:
-            _run(["open", f"spotify:search:{term}"])
-            return f"I couldn't find '{query}' in your Apple Music library, so I opened a Spotify search — say play to start it."
-        _run(["open", f"https://music.apple.com/search?term={term}"])
-        return f"I couldn't find '{query}' in your library, so I opened an Apple Music search."
+        _run(["open", f"spotify:search:{term}"])
     except Exception:
-        return f"I couldn't find '{query}' to play."
+        pass
+    return f"I couldn't play '{query}' on Spotify just now, so I opened a Spotify search for it."
 
 
 # --------------------------------------------------------------------------- #
