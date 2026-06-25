@@ -20,6 +20,7 @@ voices/
 
 # Secrets / credentials — never commit these
 .env
+.spotify.json
 token.json
 client_secret*.json
 credentials.json

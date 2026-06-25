@@ -114,25 +114,61 @@ def _choose_say_voice() -> str | None:
 class TextToSpeech:
     def __init__(self) -> None:
         model = Path(CONFIG.piper_model).expanduser()
-        self.piper_bin = _find_piper()
         self.model_path = str(model)
-        # Ready only if BOTH the resolved binary and the model file exist.
-        self.piper_ready = bool(self.piper_bin) and model.exists()
         self.say_voice = _choose_say_voice()
+        self.piper_bin = _find_piper()
+
+        # Load the Piper neural voice ONCE at startup and keep it resident, so
+        # each utterance is fast. Reloading the ~120 MB model per sentence (the
+        # old CLI approach) added several seconds of "speaking but silent" delay,
+        # especially under memory pressure. Falls back to the CLI, then `say`.
+        self.piper_voice = None
+        if model.exists():
+            try:
+                from piper import PiperVoice
+                self.piper_voice = PiperVoice.load(self.model_path)
+            except Exception:
+                self.piper_voice = None
+        self.piper_ready = self.piper_voice is not None or (
+            bool(self.piper_bin) and model.exists()
+        )
 
     def speak(self, text: str) -> None:
         text = _clean_for_speech(text)
         if not text.strip():
             return
-        if self.piper_ready:
+        if self.piper_voice is not None:
             try:
-                self._speak_piper(text)
+                self._speak_piper_inproc(text)
+                return
+            except Exception:
+                pass
+        if self.piper_bin and Path(self.model_path).exists():
+            try:
+                self._speak_piper_cli(text)
                 return
             except Exception:
                 pass
         self._speak_say(text)
 
-    def _speak_piper(self, text: str) -> None:
+    def _speak_piper_inproc(self, text: str) -> None:
+        """Synthesize with the already-loaded voice — no per-utterance reload."""
+        import wave
+        from piper.config import SynthesisConfig
+
+        wav_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+        try:
+            cfg = SynthesisConfig(length_scale=CONFIG.piper_length_scale)
+            with wave.open(wav_path, "wb") as wf:
+                self.piper_voice.synthesize_wav(text, wf, syn_config=cfg)
+            subprocess.run(["afplay", wav_path], check=False)
+        finally:
+            try:
+                os.remove(wav_path)
+            except OSError:
+                pass
+
+    def _speak_piper_cli(self, text: str) -> None:
         wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
         try:
             subprocess.run(

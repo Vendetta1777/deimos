@@ -372,3 +372,62 @@ function stopMic() {
 }
 
 connect();
+
+// --- HUD side rails: live clock, weather, markets ---------------------------
+const clockEl = document.getElementById("clock");
+const clockDateEl = document.getElementById("clock-date");
+function tickClock() {
+  const now = new Date();
+  if (clockEl) {
+    clockEl.textContent = now.toLocaleTimeString([], {
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    });
+  }
+  if (clockDateEl) {
+    clockDateEl.textContent = now.toLocaleDateString([], {
+      weekday: "short", day: "numeric", month: "short",
+    });
+  }
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+async function refreshWeather() {
+  try {
+    const d = await (await fetch("/api/weather")).json();
+    const t = document.getElementById("wx-temp");
+    const c = document.getElementById("wx-cond");
+    const l = document.getElementById("wx-loc");
+    if (t) t.textContent = d.temp || "—";
+    if (c) c.textContent = d.condition || "—";
+    if (l) l.textContent = d.location || "";
+  } catch (_) {/* leave placeholders */}
+}
+
+function fmtPrice(p) {
+  if (p == null) return "—";
+  return p >= 1000 ? p.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                   : p.toFixed(2);
+}
+async function refreshStocks() {
+  try {
+    const d = await (await fetch("/api/stocks")).json();
+    const box = document.getElementById("stocks");
+    if (!box) return;
+    box.innerHTML = "";
+    (d.stocks || []).forEach((s) => {
+      const row = document.createElement("div");
+      row.className = "stock-row";
+      const chg = s.change == null ? "" :
+        `${s.change >= 0 ? "+" : ""}${s.change.toFixed(1)}%`;
+      const cls = s.change == null ? "" : s.change >= 0 ? "stock-up" : "stock-down";
+      row.innerHTML =
+        `<span class="stock-sym">${s.symbol}</span>` +
+        `<span class="stock-val ${cls}">${fmtPrice(s.price)} ${chg}</span>`;
+      box.appendChild(row);
+    });
+  } catch (_) {/* leave placeholder */}
+}
+
+refreshWeather(); setInterval(refreshWeather, 10 * 60 * 1000); // every 10 min
+refreshStocks(); setInterval(refreshStocks, 60 * 1000);        // every minute

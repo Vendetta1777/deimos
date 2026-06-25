@@ -36,6 +36,28 @@
 
   <div id="hint" class="hint">tap the orb &middot; or press space to speak &middot; tap again to pause</div>
 
+  <!-- HUD side rails: ambient readouts that frame the orb -->
+  <aside class="rail rail-left">
+    <div class="widget">
+      <div class="w-label">Local Time</div>
+      <div class="w-time" id="clock">--:--</div>
+      <div class="w-sub" id="clock-date">—</div>
+    </div>
+  </aside>
+
+  <aside class="rail rail-right">
+    <div class="widget">
+      <div class="w-label">Weather</div>
+      <div class="w-temp" id="wx-temp">—</div>
+      <div class="w-sub" id="wx-cond">loading…</div>
+      <div class="w-sub w-loc" id="wx-loc"></div>
+    </div>
+    <div class="widget">
+      <div class="w-label">Markets</div>
+      <div class="w-stocks" id="stocks"><div class="w-sub">loading…</div></div>
+    </div>
+  </aside>
+
   <script src="/app.js"></script>
 </body>
 </html>

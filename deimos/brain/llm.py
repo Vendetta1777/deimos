@@ -81,6 +81,10 @@ class Brain:
                     messages=self.history,
                     tools=registry.schemas(),
                     keep_alive=CONFIG.keep_alive,
+                    options={
+                        "num_ctx": CONFIG.llm_num_ctx,
+                        "num_predict": CONFIG.llm_num_predict,
+                    },
                 )
                 message = response.message
                 self.history.append(message)
@@ -101,6 +105,10 @@ class Brain:
                 model=CONFIG.llm_model,
                 messages=self.history,
                 keep_alive=CONFIG.keep_alive,
+                options={
+                    "num_ctx": CONFIG.llm_num_ctx,
+                    "num_predict": CONFIG.llm_num_predict,
+                },
             )
             return (final.message.content or "").strip(), tool_called
         except Exception as exc:

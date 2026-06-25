@@ -43,6 +43,16 @@ PROJECTS_ROOT = Path("~/deimos-projects").expanduser()
 
 app = FastAPI()
 
+
+@app.middleware("http")
+async def _no_cache(request: Request, call_next):
+    """Stop the webview from serving stale HTML/CSS/JS after a UI change, so a
+    plain reload always shows the latest."""
+    resp = await call_next(request)
+    resp.headers["Cache-Control"] = "no-store, must-revalidate"
+    return resp
+
+
 stt = SpeechToText()
 tts = TextToSpeech()
 brain = Brain()
@@ -271,6 +281,58 @@ async def save(project: str, request: Request) -> Response:
     subprocess.run(git + ["commit", "-m", f"live edit {ts}", "--allow-empty"], capture_output=True)
     (base / "index.html").write_text(html, encoding="utf-8")
     return JSONResponse({"ok": True, "note": f"Saved {project}/index.html and snapshotted."})
+
+
+# --------------------------------------------------------------------------- #
+# HUD data endpoints for the side rails (weather + markets). Both reuse the
+# trust store skills.py builds so HTTPS verifies behind a TLS-inspecting network,
+# and both degrade gracefully (empty/None) so the UI never breaks.
+# --------------------------------------------------------------------------- #
+import json as _json
+import urllib.parse as _uparse
+from deimos.tools.skills import _get as _http_get
+
+
+def _weather_json() -> dict:
+    try:
+        fmt = _uparse.quote("%t|%C|%l")
+        line = _http_get(f"https://wttr.in/?format={fmt}&m", ua="curl/8.4.0").strip()
+        temp, cond, loc = (line.split("|") + ["", "", ""])[:3]
+        return {"temp": temp.strip(), "condition": cond.strip(), "location": loc.strip()}
+    except Exception:
+        return {"temp": "", "condition": "", "location": ""}
+
+
+def _stocks_json(symbols: str) -> dict:
+    out = []
+    for sym in [s.strip() for s in symbols.split(",") if s.strip()][:6]:
+        row = {"symbol": sym, "price": None, "change": None}
+        try:
+            url = (
+                "https://query1.finance.yahoo.com/v8/finance/chart/"
+                + _uparse.quote(sym) + "?interval=1d&range=1d"
+            )
+            j = _json.loads(_http_get(url, ua="Mozilla/5.0"))
+            meta = j["chart"]["result"][0]["meta"]
+            price = meta.get("regularMarketPrice")
+            prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+            row["price"] = price
+            if price is not None and prev:
+                row["change"] = (price - prev) / prev * 100.0
+        except Exception:
+            pass
+        out.append(row)
+    return {"stocks": out}
+
+
+@app.get("/api/weather")
+async def api_weather() -> JSONResponse:
+    return JSONResponse(await asyncio.to_thread(_weather_json))
+
+
+@app.get("/api/stocks")
+async def api_stocks(symbols: str = "AAPL,TSLA,NVDA,BTC-USD") -> JSONResponse:
+    return JSONResponse(await asyncio.to_thread(_stocks_json, symbols))
 
 
 app.mount("/", StaticFiles(directory=str(WEB_DIR)), name="static")

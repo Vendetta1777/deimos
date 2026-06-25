@@ -84,6 +84,52 @@ SELF_NOTE = (
 )
 
 
+# The small model often mis-routes a USER build ("make me a website about X") to
+# project_path='self', which then hits SELF_NOTE and refuses to scaffold a site.
+# These detect that case so we can reroute it to a real new project instead.
+_SELF_TARGET_WORDS = {"self", "deimos", "yourself", ""}
+_ABOUT_DEIMOS_RE = re.compile(
+    r"\b(yourself|deimos|your\s+(interface|orb|appearance|look|looks|visuals?|"
+    r"colou?rs?|ui|ux|design|layout|theme|self|app|window|page|voice))\b",
+    re.IGNORECASE,
+)
+_USER_PROJECT_RE = re.compile(
+    r"\b(web\s?site|web\s?page|landing\s?page|site|app|application|portfolio|"
+    r"blog|store|shop|game|dashboard|tracker|tool|page\s+(about|for))\b",
+    re.IGNORECASE,
+)
+
+
+def _derive_project_name(instruction: str) -> str:
+    """Turn a build request into a short kebab-case folder name."""
+    text = (instruction or "").strip()
+    m = re.search(r"\b(?:about|for|on|called|named|of)\s+(.+)", text, re.IGNORECASE)
+    base = m.group(1) if m else text
+    base = re.split(r"[.?!;,\n]", base)[0]                       # first clause only
+    if not m:  # strip a leading "make/build me a ..." so the name is the subject
+        base = re.sub(
+            r"^\s*(please\s+)?(make|build|create|design|generate|give|do)\s+"
+            r"(me\s+)?(a|an|the)?\s*",
+            "", base, flags=re.IGNORECASE,
+        )
+    base = re.sub(r"^(the|a|an)\s+", "", base.strip(), flags=re.IGNORECASE)
+    slug = re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")
+    parts = [p for p in slug.split("-") if p][:5]
+    return "-".join(parts) or "new-site"
+
+
+def _maybe_reroute(instruction: str, project_path: str) -> str:
+    """If a 'self' target is really a user-facing build, route to a new project."""
+    target = (project_path or "").strip().lower()
+    if target not in _SELF_TARGET_WORDS:
+        return project_path                       # an explicit project name; trust it
+    if _ABOUT_DEIMOS_RE.search(instruction or ""):
+        return project_path                       # genuinely about Deimos itself
+    if _USER_PROJECT_RE.search(instruction or ""):
+        return _derive_project_name(instruction)  # build it as its own project
+    return project_path
+
+
 def _resolve_project(project_path: str) -> Path:
     if not project_path or project_path.lower() in {"self", "deimos", "yourself"}:
         return PROJECT_ROOT
@@ -334,6 +380,9 @@ def _publish_project(cwd: Path, instruction: str) -> str:
     },
 )
 def run_claude_code(instruction: str, project_path: str = "self") -> str:
+    # Guard against the common mis-route where a user build ("make me a website
+    # about X") is sent with project_path='self'; build it as its own project.
+    project_path = _maybe_reroute(instruction, project_path)
     cwd = _resolve_project(project_path)
     cwd.mkdir(parents=True, exist_ok=True)
     is_self = cwd == PROJECT_ROOT

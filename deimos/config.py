@@ -17,6 +17,12 @@ class Config:
     # Keep the model resident in memory between requests (-1 = never unload),
     # so it doesn't pay model-reload latency on each turn.
     keep_alive: int = -1
+    # Context window for the chat model. Qwen defaults to 32k, whose large KV
+    # cache wastes RAM and slows replies on a 16 GB Mac. 8k is plenty for the
+    # system prompt + recent history and keeps memory pressure (and latency) low.
+    llm_num_ctx: int = 8192
+    # Cap reply length — spoken answers are short, so this prevents runaway gen.
+    llm_num_predict: int = 512
     # A larger model used ONLY to compose detailed build specs for Claude Code
     # (not for everyday chat), so coding quality is high without slowing chat.
     coder_model: str = "qwen2.5:7b"
@@ -53,6 +59,10 @@ class Config:
         "instruction that explicitly says to edit web/index.html, web/style.css, "
         "and web/app.js. Never change your appearance by editing brain/ or "
         "config.py. "
+        "Choose project_path carefully: use 'self' ONLY to change Deimos's own "
+        "app, interface, or behavior. To build a website, app, or project FOR "
+        "THE USER (for example 'make me a website about X'), pass a short "
+        "descriptive project name like 'max-verstappen-site', never 'self'. "
         "When calling run_claude_code, pass the user's full, exact request as "
         "the instruction — do not summarize or shorten it. If the request is "
         "vague, expand it into a clear, detailed spec before passing it. "
@@ -63,7 +73,8 @@ class Config:
         "tool instead of guessing, and never read tool output verbatim — answer "
         "in your own concise, natural voice. "
         "You can control this Mac. To open an app use open_app; to open a "
-        "website use open_url; to control music use media_control; to set volume "
+        "website use open_url; to play a specific song, artist, or playlist use "
+        "play_music; to play, pause, or skip use media_control; to set volume "
         "use set_volume. For anything else on the computer, use run_command with "
         "a shell command. Destructive or system-level commands will ask the user "
         "for confirmation automatically — still attempt them; don't refuse. "

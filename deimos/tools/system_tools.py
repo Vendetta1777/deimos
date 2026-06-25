@@ -141,6 +141,97 @@ def media_control(action: str) -> str:
     return f"{pretty} {app}."
 
 
+def _osa_escape(s: str) -> str:
+    return (s or "").replace("\\", "\\\\").replace('"', '\\"')
+
+
+@registry.tool(
+    name="play_music",
+    description=(
+        "Play a specific song, artist, album, or playlist by name. Use for "
+        "requests like 'play <song>', 'play <artist>', 'play my <name> "
+        "playlist'. Plays from the Apple Music library; if it isn't there, "
+        "opens a search. For plain play/pause/skip use media_control instead."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The song, artist, album, or playlist name.",
+            },
+            "kind": {
+                "type": "string",
+                "description": "One of: song, artist, album, playlist. Default song.",
+            },
+        },
+        "required": ["query"],
+    },
+)
+def play_music(query: str, kind: str = "song") -> str:
+    query = (query or "").strip()
+    if not query:
+        return "What would you like me to play?"
+
+    # If Spotify is set up (credentials present), search + play it for real.
+    # Falls through to Apple Music on any failure.
+    from deimos.tools import spotify
+    if spotify.is_configured():
+        played = spotify.play(query, kind)
+        if played:
+            return played
+
+    q = _osa_escape(query)
+    kind = (kind or "song").strip().lower()
+    if kind in ("track", "tune"):
+        kind = "song"
+
+    # Build the Apple Music search/play body for the requested kind.
+    if kind == "playlist":
+        find = (
+            f'if (exists playlist "{q}") then\n'
+            f'  play playlist "{q}"\n'
+            f'  return "Playing your " & "{q}" & " playlist"\n'
+            f'else\n'
+            f'  set pls to (every playlist whose name contains "{q}")\n'
+            f'  if pls is {{}} then return "notfound"\n'
+            f'  play (item 1 of pls)\n'
+            f'  return "Playing the " & (name of item 1 of pls) & " playlist"\n'
+            f'end if'
+        )
+    else:
+        field = {"artist": "artist", "album": "album"}.get(kind, "name")
+        find = (
+            f'set matches to (every track whose {field} contains "{q}")\n'
+            f'if matches is {{}} then return "notfound"\n'
+            f'play (item 1 of matches)\n'
+            f'return "Playing " & (name of item 1 of matches) & " by " & '
+            f'(artist of item 1 of matches)'
+        )
+
+    script = f'tell application "Music"\n  launch\n  {find}\nend tell'
+    try:
+        result = _run(["osascript", "-e", script], timeout=20)
+    except Exception as exc:
+        return f"Couldn't reach Apple Music ({exc})."
+
+    out = (result.stdout or "").strip()
+    if result.returncode == 0 and out and out != "notfound":
+        return out + "."
+
+    # Not in the Apple Music library: fall back to opening a search.
+    import urllib.parse
+    term = urllib.parse.quote(query)
+    try:
+        if subprocess.run(["test", "-d", "/Applications/Spotify.app"]).returncode == 0:
+            _run(["open", f"spotify:search:{term}"])
+            return f"I couldn't find '{query}' in your Apple Music library, so I opened a Spotify search — say play to start it."
+        _run(["open", f"https://music.apple.com/search?term={term}"])
+        return f"I couldn't find '{query}' in your library, so I opened an Apple Music search."
+    except Exception:
+        return f"I couldn't find '{query}' to play."
+
+
 # --------------------------------------------------------------------------- #
 # The catch-all: arbitrary shell command, gated on danger
 # --------------------------------------------------------------------------- #
