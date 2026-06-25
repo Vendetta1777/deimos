@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Deimos</title>
+  <style>
+    html, body {
+      margin: 0; height: 100%; background: transparent; overflow: hidden;
+      -webkit-user-select: none; user-select: none; cursor: default;
+    }
+    .stage {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      animation: enter 0.7s cubic-bezier(.2,.7,.2,1) both;
+    }
+    @keyframes enter { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+    .layer { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+             border-radius: 50%; pointer-events: none; }
+
+    /* Soft breathing aura behind everything. */
+    .aura { width: 150px; height: 150px;
+      background: radial-gradient(circle, rgba(255,31,55,0.30) 0%, rgba(176,10,34,0.10) 45%, transparent 70%);
+      filter: blur(8px); animation: breathe 3.6s ease-in-out infinite; }
+
+    /* Expanding echo rings, like a sonar pulse. */
+    .pulse { width: 92px; height: 92px; border: 1.5px solid rgba(255,31,55,0.55); opacity: 0;
+             animation: pulse 3s ease-out infinite; }
+    .pulse.p2 { animation-delay: 1s; }
+    .pulse.p3 { animation-delay: 2s; }
+    @keyframes pulse {
+      0%   { transform: translate(-50%,-50%) scale(0.55); opacity: 0; }
+      18%  { opacity: 0.7; }
+      100% { transform: translate(-50%,-50%) scale(1.7); opacity: 0; }
+    }
+
+    /* Two thin broken reticle rings turning opposite ways. */
+    .reticle { width: 124px; height: 124px;
+      border: 1px solid transparent; border-top-color: rgba(255,60,80,0.7);
+      border-right-color: rgba(255,60,80,0.25);
+      animation: spin 5.5s linear infinite; }
+    .reticle.r2 { width: 142px; height: 142px;
+      border: 1px solid transparent; border-bottom-color: rgba(231,178,74,0.55);
+      border-left-color: rgba(231,178,74,0.18);
+      animation: spin 9s linear infinite reverse; }
+    @keyframes spin { to { transform: translate(-50%,-50%) rotate(360deg); } }
+
+    /* The eye — the only clickable thing. */
+    .orb { width: 92px; height: 92px; pointer-events: auto; cursor: pointer; z-index: 2;
+      background: radial-gradient(circle at 50% 42%,
+        #fff7f2 0%, #ff7a4a 16%, #ff1f37 44%, #8a0a1c 72%, rgba(60,2,12,0) 100%);
+      box-shadow: 0 0 24px 5px rgba(255,31,55,0.6), 0 0 56px 14px rgba(176,10,34,0.32),
+                  inset 0 0 18px rgba(255,140,110,0.65);
+      animation: breathe 3.6s ease-in-out infinite, hue 7s ease-in-out infinite;
+      transition: transform 0.18s ease, box-shadow 0.3s ease; }
+    @keyframes breathe {
+      0%, 100% { transform: translate(-50%,-50%) scale(0.97); filter: brightness(0.96); }
+      50%      { transform: translate(-50%,-50%) scale(1.05); filter: brightness(1.15); }
+    }
+    @keyframes hue { 0%,100% { filter: hue-rotate(0deg); } 50% { filter: hue-rotate(-12deg); } }
+
+    /* Pupil drifts — the eye glancing around. Glint adds a wet highlight. */
+    .pupil { position: absolute; left: 50%; top: 44%; width: 18px; height: 18px;
+      transform: translate(-50%,-50%); border-radius: 50%;
+      background: radial-gradient(circle, #150208 0%, #3a0008 62%, transparent 100%);
+      animation: glance 6s ease-in-out infinite; }
+    @keyframes glance {
+      0%,100% { transform: translate(-50%,-50%); }
+      20% { transform: translate(-72%,-58%); }
+      45% { transform: translate(-30%,-46%); }
+      70% { transform: translate(-58%,-30%); }
+    }
+    .glint { position: absolute; left: 38%; top: 30%; width: 13px; height: 9px;
+      border-radius: 50%; background: rgba(255,250,245,0.85); filter: blur(1.5px); }
+
+    .orb:hover { transform: translate(-50%,-50%) scale(1.08);
+      box-shadow: 0 0 34px 9px rgba(255,31,55,0.78), 0 0 78px 22px rgba(176,10,34,0.45),
+                  inset 0 0 20px rgba(255,160,130,0.8); }
+    .orb:active { transform: translate(-50%,-50%) scale(0.95); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .stage, .aura, .pulse, .reticle, .orb, .pupil { animation: none; }
+      .pulse { display: none; }
+    }
+  </style>
+</head>
+<body data-tauri-drag-region>
+  <div class="stage">
+    <div class="layer aura"></div>
+    <div class="layer pulse"></div>
+    <div class="layer pulse p2"></div>
+    <div class="layer pulse p3"></div>
+    <div class="layer reticle"></div>
+    <div class="layer reticle r2"></div>
+    <div class="layer orb" id="orb" title="Click to open Deimos · drag to move">
+      <div class="pupil"></div>
+      <div class="glint"></div>
+    </div>
+  </div>
+
+  <script>
+    const orb = document.getElementById("orb");
+
+    async function expand() {
+      const T = window.__TAURI__;
+      if (!T || !T.window) { location.href = "http://localhost:8765/"; return; }
+      const { getCurrentWindow, LogicalSize } = T.window;
+      const w = getCurrentWindow();
+      try {
+        await w.setAlwaysOnTop(false);
+        await w.setDecorations(true);
+        await w.setResizable(true);
+        await w.setSize(new LogicalSize(1040, 800));
+        await w.center();
+        await w.setFocus();
+      } catch (e) {}
+      location.href = "http://localhost:8765/";
+    }
+    orb.addEventListener("click", (e) => { e.stopPropagation(); expand(); });
+
+    // Tuck into the TOP-LEFT (clear of the desktop icons) on first show.
+    (async () => {
+      const T = window.__TAURI__;
+      if (!T || !T.window) return;
+      try {
+        const { getCurrentWindow, LogicalPosition } = T.window;
+        await getCurrentWindow().setPosition(new LogicalPosition(24, 44));
+      } catch (e) {}
+    })();
+  </script>
+</body>
+</html>

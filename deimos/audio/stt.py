@@ -20,16 +20,27 @@ class SpeechToText:
             compute_type=CONFIG.whisper_compute,
         )
 
-    def record(self, stop_event: threading.Event | None = None) -> np.ndarray:
+    def record(
+        self,
+        stop_event: threading.Event | None = None,
+        initial_timeout: float | None = None,
+    ) -> np.ndarray:
         """Record until the speaker goes quiet, then return mono float32 audio.
 
         If ``stop_event`` is provided, recording bails out as soon as it is set,
         so a caller (e.g. the web UI) can pause listening on demand.
+
+        If ``initial_timeout`` is given, recording gives up after that many
+        seconds if the speaker hasn't started talking yet — used for hands-free
+        follow-up windows so silence ends the conversation quickly. When no
+        speech is detected, an empty array is returned (so transcription yields
+        nothing rather than hallucinating words from ambient noise).
         """
         sr = CONFIG.sample_rate
         block = int(sr * 0.1)  # 100 ms blocks
         silent_blocks_needed = int(CONFIG.silence_duration / 0.1)
         max_blocks = int(CONFIG.max_record_seconds / 0.1)
+        init_blocks = int(initial_timeout / 0.1) if initial_timeout else None
 
         frames: list[np.ndarray] = []
         silent_run = 0
@@ -38,7 +49,7 @@ class SpeechToText:
         with sd.InputStream(
             samplerate=sr, channels=1, dtype="float32", blocksize=block
         ) as stream:
-            for _ in range(max_blocks):
+            for i in range(max_blocks):
                 if stop_event is not None and stop_event.is_set():
                     break
                 data, _ = stream.read(block)
@@ -52,8 +63,11 @@ class SpeechToText:
                     silent_run += 1
                     if silent_run >= silent_blocks_needed:
                         break
+                # Give up early if no one started speaking within the window.
+                if init_blocks is not None and not has_spoken and i >= init_blocks:
+                    break
 
-        if not frames:
+        if not frames or not has_spoken:
             return np.zeros(0, dtype=np.float32)
         return np.concatenate(frames)
 

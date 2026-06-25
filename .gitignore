@@ -21,6 +21,8 @@ voices/
 # Secrets / credentials — never commit these
 .env
 .spotify.json
+.anthropic.json
+.picovoice.json
 token.json
 client_secret*.json
 credentials.json

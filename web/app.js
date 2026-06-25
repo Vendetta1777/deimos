@@ -431,3 +431,32 @@ async function refreshStocks() {
 
 refreshWeather(); setInterval(refreshWeather, 10 * 60 * 1000); // every 10 min
 refreshStocks(); setInterval(refreshStocks, 60 * 1000);        // every minute
+
+// --- Desktop app: collapse back to the floating mini-orb widget ---
+(async function () {
+  const T = window.__TAURI__;
+  const btn = document.getElementById("collapse");
+  if (!T || !T.window) return; // only inside the Tauri app
+  const { getCurrentWindow, LogicalSize, LogicalPosition } = T.window;
+  const w = getCurrentWindow();
+
+  async function collapse() {
+    try {
+      await w.setAlwaysOnTop(true);
+      await w.setDecorations(false);
+      await w.setSize(new LogicalSize(168, 168));
+      await w.setPosition(new LogicalPosition(24, 44)); // top-left
+    } catch (e) {}
+    location.href = "http://localhost:8765/mini";
+  }
+
+  if (btn) {
+    btn.hidden = false;
+    btn.addEventListener("click", collapse);
+  }
+  // Closing the expanded window returns to the floating orb instead of
+  // quitting the app (it's the only window).
+  try {
+    await w.onCloseRequested((event) => { event.preventDefault(); collapse(); });
+  } catch (e) {}
+})();
