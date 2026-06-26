@@ -25,6 +25,27 @@ _BUILD_INTENT = re.compile(
 # Signals the request is about Deimos itself (so project_path should be 'self').
 _SELF_REF = re.compile(r"\b(yourself|your|deimos)\b", re.I)
 
+# Tell-tale signs the model FAKED an answer or refused instead of using a tool:
+# a written-out function call like "[get_current_time()]", or "I don't have
+# access / can't check / I'm unable".
+_FAIL_MARKERS = re.compile(
+    r"\[\s*\w+\s*\([^\]]*\)\s*\]"
+    r"|do(n'?t| not) have (access|the ability)"
+    r"|can'?t (check|access|do|help with that)"
+    r"|cannot (check|access|do)"
+    r"|i'?m unable|i am unable|i don'?t have real[- ]?time",
+    re.I,
+)
+# Questions that REQUIRE a tool to answer truthfully — if the model answered one
+# of these without calling a tool, it made the answer up.
+_TIME_Q = re.compile(
+    r"\b(what'?s?( the)? (time|date|day)|what time|current (time|date)|"
+    r"today'?s date|what day is)\b", re.I,
+)
+_WEATHER_Q = re.compile(
+    r"\b(weather|temperature|forecast|how (hot|cold|warm))\b", re.I,
+)
+
 
 def _has_build_intent(text: str) -> bool:
     return bool(_BUILD_INTENT.search(text or ""))
@@ -32,6 +53,66 @@ def _has_build_intent(text: str) -> bool:
 
 def _is_self_directed(text: str) -> bool:
     return bool(_SELF_REF.search(text or ""))
+
+
+def _query_needs_tool(text: str) -> bool:
+    t = text or ""
+    return bool(_TIME_Q.search(t) or _WEATHER_Q.search(t))
+
+
+def _should_escalate(user_text: str, reply: str) -> bool:
+    """True if a no-tool turn looks like a failure worth re-running on the 7B."""
+    return (
+        _has_build_intent(user_text)
+        or bool(_FAIL_MARKERS.search(reply or ""))
+        or _query_needs_tool(user_text)
+    )
+
+
+_WX_LOC = re.compile(r"\b(?:in|for|at)\s+([a-z][a-z .'\-]{1,40})", re.I)
+# System-status questions (battery / memory / disk).
+_SYS_Q = re.compile(
+    r"\b(my battery|battery (level|percentage|life|status)|how much (battery|"
+    r"memory|ram|disk|storage|space|free space)|free (memory|ram|disk|storage|"
+    r"space)|system status|how('?s| is) my (mac|computer|system) doing|disk space)\b",
+    re.I,
+)
+
+
+def _route_intent(user_text: str) -> str | None:
+    """Deterministically handle the common, unambiguous assistant requests by
+    calling the right tool directly — small models mis-pick tools, so we don't
+    let them choose for these. Returns a speakable reply, or None to let the
+    model handle it normally."""
+    t = user_text or ""
+    if _TIME_Q.search(t):
+        res = registry.call("get_current_time", {})
+        return f"It's {res}." if res and "Error" not in res else None
+    if _WEATHER_Q.search(t):
+        m = _WX_LOC.search(t)
+        loc = m.group(1).strip().rstrip(" .?!,") if m else ""
+        res = registry.call("get_weather", {"location": loc})
+        return res if res and "Error" not in res else None
+    if _SYS_Q.search(t):
+        res = registry.call("system_status", {})
+        return res if res and "Error" not in res else None
+    return None
+
+
+def _force_known_tool(user_text: str) -> str | None:
+    """Guaranteed net for must-use-a-tool questions: if the model still didn't
+    call a tool for a time/weather query, invoke it directly so the answer is
+    always real (never faked or stalled)."""
+    t = user_text or ""
+    if _TIME_Q.search(t):
+        res = registry.call("get_current_time", {})
+        return f"It's {res}." if res and "Error" not in res else None
+    if _WEATHER_Q.search(t):
+        m = _WX_LOC.search(t)
+        loc = m.group(1).strip().rstrip(" .?!,") if m else ""
+        res = registry.call("get_weather", {"location": loc})
+        return res if res and "Error" not in res else None
+    return None
 
 
 class Brain:
@@ -61,30 +142,58 @@ class Brain:
         self.history.append({"role": "user", "content": user_text})
         self._trim()
 
-        reply, tool_called = self._chat_loop(max_tool_rounds)
+        # Deterministic routing for common requests the model mis-handles.
+        routed = _route_intent(user_text)
+        if routed is not None:
+            self.history.append({"role": "assistant", "content": routed})
+            memory.log("deimos", routed)
+            return routed
 
-        # Backstop: a build/edit request that came back as plain text (no tool)
-        # almost always means the small model described instead of acting.
-        if not tool_called and _has_build_intent(user_text):
-            reply = self._force_action(user_text, reply)
+        base_len = len(self.history)  # everything after this is one turn's work
+
+        # Fast pass on the small model.
+        reply, tool_called = self._chat_loop(
+            max_tool_rounds, CONFIG.llm_model, CONFIG.keep_alive
+        )
+
+        # Escalate flaky no-tool turns (faked answers, skipped tools, build
+        # requests) to the stronger model — re-run the turn cleanly.
+        if not tool_called and _should_escalate(user_text, reply):
+            del self.history[base_len:]  # discard the weak model's attempt
+            reply, tool_called = self._chat_loop(
+                max_tool_rounds, CONFIG.escalation_model, CONFIG.coder_keep_alive
+            )
+
+        # Guaranteed net for time/weather questions the model still faked/stalled.
+        if not tool_called:
+            forced = _force_known_tool(user_text)
+            if forced:
+                reply, tool_called = forced, True
+
+        # Last resort: a self-directed build the model still won't act on — do it.
+        if not tool_called and _has_build_intent(user_text) and _is_self_directed(user_text):
+            result = registry.call(
+                "run_claude_code",
+                {"instruction": user_text, "project_path": "self"},
+            )
+            reply = result.split("\n\n", 1)[0].strip() or "On it — updating myself now."
 
         memory.log("deimos", reply)
         return reply
 
-    def _chat_loop(self, max_tool_rounds: int) -> tuple[str, bool]:
-        """Run the chat/tool loop. Returns (reply, whether any tool was called)."""
+    def _chat_loop(self, max_tool_rounds: int, model: str, keep_alive) -> tuple[str, bool]:
+        """Run the chat/tool loop on `model`. Returns (reply, any_tool_called)."""
         tool_called = False
+        opts = {
+            "num_ctx": CONFIG.llm_num_ctx,
+            "num_predict": CONFIG.llm_num_predict,
+            "temperature": CONFIG.llm_temperature,
+        }
         try:
             for _ in range(max_tool_rounds):
                 response = self.client.chat(
-                    model=CONFIG.llm_model,
-                    messages=self.history,
-                    tools=registry.schemas(),
-                    keep_alive=CONFIG.keep_alive,
-                    options={
-                        "num_ctx": CONFIG.llm_num_ctx,
-                        "num_predict": CONFIG.llm_num_predict,
-                    },
+                    model=model, messages=self.history, tools=registry.schemas(),
+                    keep_alive=keep_alive, options=opts,
                 )
                 message = response.message
                 self.history.append(message)
@@ -102,57 +211,14 @@ class Brain:
                     )
 
             final = self.client.chat(
-                model=CONFIG.llm_model,
-                messages=self.history,
-                keep_alive=CONFIG.keep_alive,
-                options={
-                    "num_ctx": CONFIG.llm_num_ctx,
-                    "num_predict": CONFIG.llm_num_predict,
-                },
+                model=model, messages=self.history,
+                keep_alive=keep_alive, options=opts,
             )
             return (final.message.content or "").strip(), tool_called
         except Exception as exc:
             # Never let a backend hiccup crash the conversation loop.
             memory.log("error", f"{type(exc).__name__}: {exc}")
             return "Sorry, my thinking backend isn't responding right now.", tool_called
-
-    def _force_action(self, user_text: str, prior_reply: str) -> str:
-        """One forceful retry to make the model actually call run_claude_code.
-
-        If it still won't, and the request is clearly about Deimos itself, call
-        the tool directly (project_path='self') as a last resort. For non-self
-        requests we don't guess a project path — we return the model's reply.
-        """
-        nudge_idx = len(self.history)
-        self.history.append({
-            "role": "system",
-            "content": (
-                "The user's last message asks you to build, change, improve, or "
-                "fix something. If it is a real request to build or modify code, "
-                "a website, a project, or yourself, you MUST call run_claude_code "
-                "now — pass the user's request as 'instruction', and "
-                "project_path='self' for changes to Deimos itself, otherwise the "
-                "project name. Do not describe what you would do. If the message "
-                "was only a question, answer it briefly instead."
-            ),
-        })
-        reply, tool_called = self._chat_loop(2)
-        # Remove just the nudge so it doesn't bias later turns.
-        try:
-            del self.history[nudge_idx]
-        except IndexError:
-            pass
-
-        if tool_called:
-            return reply
-        if _is_self_directed(user_text):
-            result = registry.call(
-                "run_claude_code",
-                {"instruction": user_text, "project_path": "self"},
-            )
-            # Keep the spoken reply short: the tool's status line, not the dump.
-            return result.split("\n\n", 1)[0].strip() or "On it — updating myself now."
-        return prior_reply
 
     def _trim(self) -> None:
         if len(self.history) > CONFIG.history_limit + 1:

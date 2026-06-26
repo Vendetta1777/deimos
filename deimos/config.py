@@ -23,6 +23,13 @@ class Config:
     llm_num_ctx: int = 8192
     # Cap reply length — spoken answers are short, so this prevents runaway gen.
     llm_num_predict: int = 512
+    # Lower temperature = more deterministic, far more reliable tool-calling on a
+    # small model (less likely to fake an answer instead of calling a tool).
+    llm_temperature: float = 0.2
+    # When the fast model flakes (skips a tool it clearly needed, or fakes an
+    # answer), the turn is re-run on this stronger model. Reuses the 7B so it's
+    # only loaded when needed (coder_keep_alive controls how long it stays warm).
+    escalation_model: str = "qwen2.5:7b"
     # Local vision model for screen sight (see_screen). Small + fast; loaded only
     # when used and unloaded soon after, to stay light on RAM.
     vision_model: str = "moondream"
