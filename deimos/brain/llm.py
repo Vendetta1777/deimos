@@ -8,6 +8,7 @@ exchange to long-term memory.
 Targets a recent ollama python client (>= 0.4) with typed responses.
 """
 import re
+import threading
 from pathlib import Path
 
 import ollama
@@ -77,6 +78,18 @@ _SYS_Q = re.compile(
     r"space)|system status|how('?s| is) my (mac|computer|system) doing|disk space)\b",
     re.I,
 )
+# Memory questions — answered deterministically from the store.
+_MEM_FACTS_Q = re.compile(
+    r"\b(what do you (know|remember) about me|do you remember (me|anything about "
+    r"me)|what have you learned about me|who am i)\b", re.I,
+)
+_MEM_RECENT_Q = re.compile(
+    r"\b(what did we (talk|chat|discuss)|what (did|have) (i|we) (talk|chat|"
+    r"discuss)|remind me what we|recap (our|the) (chat|conversation)|what were "
+    r"we (talking|chatting) about)\b", re.I,
+)
+# Gate for background fact extraction: only run when the message is first-person.
+_PERSONAL = re.compile(r"\b(i|i'?m|i'?ve|i'?ll|my|me|mine|myself)\b", re.I)
 
 
 def _route_intent(user_text: str) -> str | None:
@@ -96,6 +109,13 @@ def _route_intent(user_text: str) -> str | None:
     if _SYS_Q.search(t):
         res = registry.call("system_status", {})
         return res if res and "Error" not in res else None
+    if _MEM_FACTS_Q.search(t):
+        facts = memory.all_facts()
+        if not facts:
+            return "I don't know much about you yet — tell me about yourself and I'll remember."
+        return "Here's what I know about you: " + "; ".join(facts[-12:]) + "."
+    if _MEM_RECENT_Q.search(t):
+        return memory.recent_topics()
     return None
 
 
@@ -122,7 +142,7 @@ class Brain:
 
     def _system(self) -> str:
         content = CONFIG.system_prompt
-        facts = memory.all_facts()
+        facts = memory.all_facts()[-40:]  # cap so the prompt can't bloat over time
         if facts:
             content += "\n\nWhat you already know about the user:\n" + "\n".join(
                 f"- {f}" for f in facts
@@ -178,8 +198,58 @@ class Brain:
             )
             reply = result.split("\n\n", 1)[0].strip() or "On it — updating myself now."
 
+        # Learn durable facts about the user in the background (non-blocking).
+        self._remember_from(user_text)
+
         memory.log("deimos", reply)
         return reply
+
+    def _remember_from(self, user_text: str) -> None:
+        """Kick off background fact extraction for first-person messages."""
+        if not _PERSONAL.search(user_text or "") or len((user_text or "").split()) < 3:
+            return
+        threading.Thread(
+            target=self._extract_facts, args=(user_text,), daemon=True
+        ).start()
+
+    def _extract_facts(self, user_text: str) -> None:
+        """Pull durable facts about the user out of their message and save them.
+        Runs in a background thread so it never slows the conversation."""
+        try:
+            known = "; ".join(memory.all_facts()[-30:]) or "(nothing yet)"
+            resp = self.client.chat(
+                # Use the reliable 7B — extraction is background, so the extra
+                # latency is invisible, and the 3B misses obvious facts.
+                model=CONFIG.escalation_model,
+                messages=[
+                    {"role": "system", "content": (
+                        "You extract durable facts about the user from their message "
+                        "— their name, lasting preferences, ongoing projects, "
+                        "important people, goals, or commitments. Output each NEW "
+                        "fact on its own line, starting with 'The user'. Only durable "
+                        "personal facts — never one-off requests, questions, "
+                        "commands, or transient tasks. If nothing durable and new, "
+                        "output exactly: NONE.")},
+                    {"role": "user", "content": (
+                        f"Already known about the user: {known}\n\n"
+                        f'The user just said: "{user_text}"\n\nNew durable facts:')},
+                ],
+                keep_alive=CONFIG.coder_keep_alive,
+                options={"temperature": 0.1, "num_ctx": 4096, "num_predict": 200},
+            )
+            text = (resp.message.content or "").strip()
+            if not text or text.upper().startswith("NONE"):
+                return
+            facts = []
+            for line in text.splitlines():
+                line = line.strip().lstrip("-*•0123456789. ").strip()
+                if (line and line.upper() != "NONE" and 8 <= len(line) <= 200
+                        and line.lower().startswith("the user")):
+                    facts.append(line)
+            if facts:
+                memory.add_facts_bg(facts[:5])
+        except Exception:
+            pass
 
     def _chat_loop(self, max_tool_rounds: int, model: str, keep_alive) -> tuple[str, bool]:
         """Run the chat/tool loop on `model`. Returns (reply, any_tool_called)."""

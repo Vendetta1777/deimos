@@ -63,8 +63,38 @@ class Memory:
         self.db.commit()
         return f"Remembered: {fact}"
 
+    def add_facts_bg(self, facts: list[str]) -> None:
+        """Insert facts from a background thread, using a private connection so
+        we never share the main connection across threads."""
+        clean = [f.strip() for f in facts if f and f.strip()]
+        if not clean:
+            return
+        conn = sqlite3.connect(str(self.path), timeout=10)
+        try:
+            for f in clean:
+                conn.execute(
+                    "INSERT OR IGNORE INTO facts (ts, fact) VALUES (?, ?)",
+                    (time.time(), f),
+                )
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
     def all_facts(self) -> list[str]:
         return [row[0] for row in self.db.execute("SELECT fact FROM facts ORDER BY id")]
+
+    def recent_topics(self, limit: int = 5) -> str:
+        """A short, speakable recap of what the user recently brought up."""
+        rows = self.db.execute(
+            "SELECT text FROM turns WHERE role = 'user' ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        topics = [t for (t,) in rows if t]
+        if not topics:
+            return "We haven't talked about anything yet."
+        return "Recently you brought up: " + "; ".join(reversed(topics))
 
     def search(self, query: str, limit: int = 5) -> str:
         rows = self.db.execute(
