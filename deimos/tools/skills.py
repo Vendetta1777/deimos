@@ -13,6 +13,7 @@ Design rules that keep the assistant stable:
 import ast
 import json
 import operator
+import re
 import ssl
 import subprocess
 import threading
@@ -179,10 +180,10 @@ def open_url(url: str) -> str:
 def system_status() -> str:
     parts = []
     batt = _run(["pmset", "-g", "batt"]).stdout
-    for tok in batt.split(";"):
-        if "%" in tok:
-            parts.append(f"battery {tok.strip().split()[0]}")
-            break
+    m = re.search(r"(\d+)%", batt)
+    if m:
+        charging = "charging" in batt.lower() or "AC Power" in batt
+        parts.append(f"battery {m.group(1)}%" + (" (charging)" if charging else ""))
     # free disk on the root volume
     df = _run(["df", "-h", "/"]).stdout.splitlines()
     if len(df) >= 2:

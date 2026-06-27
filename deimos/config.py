@@ -105,7 +105,9 @@ class Config:
         "user says 'remind me to…', 'add … to my calendar', or 'text … that …', "
         "call the matching tool; never just say you will. "
         "Reply in plain spoken sentences. Do not use markdown, asterisks, bullet "
-        "points, headings, or emoji — your replies are read aloud."
+        "points, headings, or emoji — your replies are read aloud. "
+        "ALWAYS respond in English only — never use Chinese or any other language, "
+        "not even a single word or character."
     )
 
     # How many recent messages to keep (plus the system prompt). A wider window

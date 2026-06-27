@@ -95,19 +95,15 @@ def add_reminder(text: str, when: str = "") -> str:
     description="Read back the user's open (incomplete) reminders.",
 )
 def list_reminders() -> str:
-    script = (
-        'set out to ""\n'
-        'tell application "Reminders"\n'
-        '  repeat with r in (reminders whose completed is false)\n'
-        '    set out to out & (name of r) & linefeed\n'
-        '  end repeat\n'
-        'end tell\n'
-        'return out'
+    # Direct list form (no per-item loop) is markedly faster than iterating.
+    r = _osa(
+        'tell application "Reminders" to return name of '
+        '(reminders whose completed is false)',
+        timeout=15,
     )
-    r = _osa(script, timeout=30)
     if r.returncode != 0:
         return f"I couldn't read your reminders ({(r.stderr or '').strip()[:60]})."
-    items = [s.strip() for s in (r.stdout or "").splitlines() if s.strip()]
+    items = [s.strip() for s in (r.stdout or "").split(",") if s.strip()]
     if not items:
         return "You have no open reminders."
     shown = "; ".join(items[:12])
