@@ -119,6 +119,42 @@ _BRIEF_Q = re.compile(
 _PERSONAL = re.compile(r"\b(i|i'?m|i'?ve|i'?ll|my|me|mine|myself)\b", re.I)
 
 
+_MATH_WORDS = [
+    (r"\bmultiplied by\b|\btimes\b", "*"),
+    (r"\bdivided by\b|\bover\b", "/"),
+    (r"\bplus\b|\badded to\b|\badd\b", "+"),
+    (r"\bminus\b|\bsubtract(?:ed)?\b|\bless\b", "-"),
+    (r"\bmod(?:ulo)?\b", "%"),
+    (r"\bto the power of\b|\bpower\b", "**"),
+    (r"\bsquared\b", "**2"),
+    (r"\bcubed\b", "**3"),
+]
+
+
+def _route_math(t: str) -> str | None:
+    """Answer spoken arithmetic directly via the calculate tool, skipping the
+    slow model tool-selection. Returns None if it isn't a clean math question."""
+    s = (t or "").lower().strip().rstrip("?!. ")
+    s = re.sub(r"^(hey\s+)?(can you\s+|please\s+)?"
+               r"(what'?s|what is|whats|calculate|compute|how much is|how much)\s+", "", s)
+    s = re.sub(r"\bequals?\b", "", s)
+    # "15 percent of 240" -> (15/100*240); bare "percent of" -> "/100*"
+    s = re.sub(r"(\d+(?:\.\d+)?)\s*percent of\s*(\d+(?:\.\d+)?)", r"(\1/100*\2)", s)
+    s = re.sub(r"\bpercent of\b", "/100*", s)
+    for pat, rep in _MATH_WORDS:
+        s = re.sub(pat, rep, s)
+    s = re.sub(r"(?<=\d)\s*x\s*(?=\d)", "*", s)  # "12 x 8" only between digits
+    s = s.strip()
+    # Must be a pure arithmetic expression with at least one operator and digit.
+    if not re.fullmatch(r"[\d\s+\-*/%().]+", s) or not re.search(r"[+\-*/%]", s) \
+            or not re.search(r"\d", s):
+        return None
+    res = registry.call("calculate", {"expression": s})
+    if not res or "couldn't" in res.lower() or "=" not in res:
+        return None
+    return f"That's {res.split('=')[-1].strip()}."
+
+
 def _route_intent(user_text: str) -> str | None:
     """Deterministically handle the common, unambiguous assistant requests by
     calling the right tool directly — small models mis-pick tools, so we don't
@@ -139,6 +175,9 @@ def _route_intent(user_text: str) -> str | None:
     if _BRIEF_Q.search(t):
         from deimos.proactive import compose_briefing
         return compose_briefing()
+    math = _route_math(t)
+    if math is not None:
+        return math
     if _MEM_FACTS_Q.search(t):
         facts = memory.all_facts()
         if not facts:
