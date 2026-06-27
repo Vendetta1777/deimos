@@ -58,7 +58,7 @@ def _is_self_directed(text: str) -> bool:
 
 def _query_needs_tool(text: str) -> bool:
     t = text or ""
-    return bool(_TIME_Q.search(t) or _WEATHER_Q.search(t))
+    return bool(_TIME_Q.search(t) or _WEATHER_Q.search(t) or _ACTION_Q.search(t))
 
 
 def _should_escalate(user_text: str, reply: str) -> bool:
@@ -88,6 +88,27 @@ _MEM_RECENT_Q = re.compile(
     r"discuss)|remind me what we|recap (our|the) (chat|conversation)|what were "
     r"we (talking|chatting) about)\b", re.I,
 )
+# Calendar / reminder READ questions — answered by calling the native app directly.
+_CAL_Q = re.compile(
+    r"\b(what'?s? (on |in )?my (calendar|schedule|agenda)|my (calendar|schedule|"
+    r"agenda) (for|today|tomorrow|this week)|anything (on|in) my (calendar|"
+    r"schedule)|do i have (any )?(events|meetings|plans)|what('?s| does) my day "
+    r"look|what'?s on (today|tomorrow))\b", re.I,
+)
+_REM_Q = re.compile(
+    r"\b(what (are|do i have for) my reminders|list (my )?reminders|show (me )?my "
+    r"reminders|my reminders|what'?s on my (to-?do|todo)|what do i (have|need) to do)\b",
+    re.I,
+)
+# Action intents that REQUIRE a tool (create a reminder/event, send a text, play
+# music). If the small model answers one of these without calling a tool, it
+# probably faked the action — escalate so it actually happens.
+_ACTION_Q = re.compile(
+    r"\b(remind me|set (a |up a )?reminder|add (a )?reminder|schedule |put .{1,40}"
+    r"on my calendar|add .{1,40}to my (calendar|schedule)|text (her|him|them|my |"
+    r"mom|dad|[A-Z]\w+)|send .{1,40}(a )?(text|message|imessage)|message (her|him|"
+    r"them|my |mom|dad)|^play |\bplay \w)\b", re.I,
+)
 # Gate for background fact extraction: only run when the message is first-person.
 _PERSONAL = re.compile(r"\b(i|i'?m|i'?ve|i'?ll|my|me|mine|myself)\b", re.I)
 
@@ -116,6 +137,15 @@ def _route_intent(user_text: str) -> str | None:
         return "Here's what I know about you: " + "; ".join(facts[-12:]) + "."
     if _MEM_RECENT_Q.search(t):
         return memory.recent_topics()
+    if _REM_Q.search(t):
+        res = registry.call("list_reminders", {})
+        return res if res and "couldn't" not in res.lower() else None
+    if _CAL_Q.search(t):
+        when = ("tomorrow" if re.search(r"\btomorrow\b", t, re.I)
+                else "week" if re.search(r"\b(this week|upcoming|week)\b", t, re.I)
+                else "today")
+        res = registry.call("calendar_events", {"when": when})
+        return res if res and "couldn't" not in res.lower() else None
     return None
 
 

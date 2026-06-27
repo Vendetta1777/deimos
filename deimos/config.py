@@ -96,6 +96,14 @@ class Config:
         "anything else on the computer, use run_command with "
         "a shell command. Destructive or system-level commands will ask the user "
         "for confirmation automatically — still attempt them; don't refuse. "
+        "You manage the user's day through their Mac's own apps. To set a "
+        "reminder use add_reminder (pass what and, if given, when); to read their "
+        "reminders use list_reminders. To add a calendar event use add_event "
+        "(title and when); to read their schedule use calendar_events. To send an "
+        "iMessage use send_message (recipient name or number, and the body) — the "
+        "user is asked to confirm before it sends. These are ACTIONS: when the "
+        "user says 'remind me to…', 'add … to my calendar', or 'text … that …', "
+        "call the matching tool; never just say you will. "
         "Reply in plain spoken sentences. Do not use markdown, asterisks, bullet "
         "points, headings, or emoji — your replies are read aloud."
     )
@@ -168,6 +176,11 @@ class Config:
     auto_publish: bool = True
     # Auto git-snapshot a project before editing it, so any run is undoable.
     code_auto_snapshot: bool = True
+
+    # --- Preferences ---
+    # Browser Deimos opens websites in (your signed-in one), not the system
+    # default. Falls back to the default browser if this isn't installed.
+    browser: str = "Google Chrome"
 
 
 CONFIG = Config()

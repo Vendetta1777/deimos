@@ -47,8 +47,16 @@ def open_url(url: str) -> str:
         return "No URL was given."
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+    from deimos.config import CONFIG
+    browser = CONFIG.browser
     try:
-        _run(["open", url])
+        # Open in the user's preferred browser; fall back to the default.
+        if browser and Path(f"/Applications/{browser}.app").exists():
+            r = _run(["open", "-a", browser, url])
+            if r.returncode != 0:
+                _run(["open", url])
+        else:
+            _run(["open", url])
     except Exception as exc:
         return f"Couldn't open that ({exc})."
     return f"Opened {url}."
