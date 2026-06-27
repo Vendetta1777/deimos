@@ -152,6 +152,37 @@ async def speak_now(text: str) -> bool:
     return True
 
 
+async def run_voice_turn() -> None:
+    """One complete voice turn (listen → think → speak) that does NOT depend on
+    a UI connection — this is what the push-to-talk hotkey (POST /talk) calls.
+    Records from the mic, transcribes, answers, and speaks aloud; reflects in the
+    orb if it's open. Yields if something is already talking/listening."""
+    if busy.locked():
+        return
+    async with busy, _wake_paused():
+        stop = threading.Event()
+        if _ui_state_fn is not None:
+            await _ui_state_fn("listening")
+        audio = await asyncio.to_thread(stt.record, stop)
+        if _ui_state_fn is not None:
+            await _ui_state_fn("thinking")
+        text = (await asyncio.to_thread(stt.transcribe, audio) or "").strip()
+        if not text:
+            if _ui_state_fn is not None:
+                await _ui_state_fn("idle")
+            return
+        if _ui_line_fn is not None:
+            await _ui_line_fn("you", text)
+        reply = await asyncio.to_thread(brain.ask, text)
+        if _ui_line_fn is not None:
+            await _ui_line_fn("deimos", reply)
+        if _ui_state_fn is not None:
+            await _ui_state_fn("speaking")
+        await asyncio.to_thread(tts.speak, reply)
+        if _ui_state_fn is not None:
+            await _ui_state_fn("idle")
+
+
 async def _maybe_briefing(now: datetime.datetime) -> None:
     if not CONFIG.briefing_enabled:
         return
@@ -270,6 +301,16 @@ async def index() -> FileResponse:
 @app.get("/mini")
 async def mini() -> FileResponse:
     return FileResponse(WEB_DIR / "mini.html")
+
+
+@app.post("/talk")
+async def talk() -> JSONResponse:
+    """Push-to-talk trigger: start a voice turn now. Bind a global keyboard
+    shortcut to `curl -X POST http://localhost:8765/talk` (e.g. via the macOS
+    Shortcuts app) to talk to Deimos from anywhere. Fire-and-forget so the key
+    returns instantly."""
+    asyncio.create_task(run_voice_turn())
+    return JSONResponse({"ok": True})
 
 
 @app.websocket("/ws")
