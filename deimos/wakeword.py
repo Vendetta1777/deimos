@@ -8,6 +8,7 @@ turn and resumes after, so there's no device conflict with the recorder.
 Gated by CONFIG.wake_word_enabled so it only runs when you want it. Set that to
 False (or remove it) to turn the always-on mic off.
 """
+import os
 import threading
 import time
 
@@ -18,6 +19,9 @@ from deimos.config import CONFIG
 
 _SR = 16000
 _CHUNK = 1280  # 80 ms at 16 kHz — openWakeWord's expected frame size
+# Set DEIMOS_WAKE_DEBUG=1 to log live mic level + best score once a second, so a
+# non-firing wake word can be diagnosed (silent mic vs. low match vs. threshold).
+_DEBUG = bool(os.environ.get("DEIMOS_WAKE_DEBUG"))
 
 
 def is_configured() -> bool:
@@ -89,17 +93,29 @@ class WakeWord:
 
             triggered = False
             self._released.clear()  # about to open the mic device
+            dbg_max, dbg_lvl, dbg_t = 0.0, 0.0, time.time()
             try:
                 with sd.InputStream(
                     samplerate=_SR, channels=1, dtype="int16", blocksize=_CHUNK
                 ) as stream:
                     while not self._stop.is_set() and not self._paused.is_set():
                         data, _ = stream.read(_CHUNK)
-                        scores = model.predict(data[:, 0])
-                        if scores.get(name, 0.0) >= threshold:
+                        samples = data[:, 0]
+                        score = model.predict(samples).get(name, 0.0)
+                        if _DEBUG:
+                            dbg_max = max(dbg_max, score)
+                            dbg_lvl = max(dbg_lvl, float(np.abs(samples).mean()))
+                            if time.time() - dbg_t >= 1.0:
+                                print(f"[wakeword] mic_level~{dbg_lvl:.0f} "
+                                      f"best_score~{dbg_max:.2f} "
+                                      f"(need {threshold})", flush=True)
+                                dbg_max, dbg_lvl, dbg_t = 0.0, 0.0, time.time()
+                        if score >= threshold:
                             triggered = True
                             break
-            except Exception:
+            except Exception as exc:
+                if _DEBUG:
+                    print(f"[wakeword] stream error: {type(exc).__name__}: {exc}", flush=True)
                 time.sleep(0.2)
             finally:
                 self._released.set()  # stream closed; mic is free for the recorder

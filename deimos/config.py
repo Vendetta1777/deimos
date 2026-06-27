@@ -138,7 +138,10 @@ class Config:
     # When enabled, an always-on listener starts a turn when it hears the phrase.
     # "hey_jarvis" is a free pre-trained model. Set enabled False to stop the
     # always-on mic. Raise the threshold if it false-triggers; lower if it misses.
-    wake_word_enabled: bool = True
+    # NOTE: disabled — openWakeWord 0.6 + onnxruntime 1.27 don't score in this
+    # environment (verified: synth + live audio both flat 0.0). Use tap-to-talk;
+    # a push-to-talk hotkey is the planned hands-free replacement.
+    wake_word_enabled: bool = False
     wake_word: str = "hey_jarvis"
     wake_word_threshold: float = 0.5
 
