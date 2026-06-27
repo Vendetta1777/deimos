@@ -38,6 +38,7 @@ from deimos.memory import memory
 from deimos.progress import progress
 from deimos.proactive import compose_briefing
 from deimos.tools import personal
+from deimos import telegram_bridge
 from deimos import wakeword
 import deimos.tools.builtin  # noqa: F401  registers the built-in tools
 import deimos.tools.memory_tools  # noqa: F401  registers remember/recall
@@ -54,12 +55,16 @@ PROJECTS_ROOT = Path("~/deimos-projects").expanduser()
 async def _lifespan(app: "FastAPI"):
     # Start the proactive scheduler (morning briefing, event nudges) for the life
     # of the server; cancel it cleanly on shutdown.
-    task = asyncio.create_task(_proactive_loop()) if CONFIG.proactive_enabled else None
+    tasks = []
+    if CONFIG.proactive_enabled:
+        tasks.append(asyncio.create_task(_proactive_loop()))
+    if CONFIG.telegram_enabled and telegram_bridge.is_configured():
+        tasks.append(asyncio.create_task(_telegram_loop()))
     try:
         yield
     finally:
-        if task is not None:
-            task.cancel()
+        for t in tasks:
+            t.cancel()
 
 
 app = FastAPI(lifespan=_lifespan)
@@ -140,6 +145,10 @@ async def speak_now(text: str) -> bool:
         await asyncio.to_thread(tts.speak, text)
         if _ui_state_fn is not None:
             await _ui_state_fn("idle")
+    # Mirror the briefing/nudge to the owner's phone so it reaches them when
+    # they're away from the Mac.
+    if CONFIG.telegram_enabled and telegram_bridge.is_configured():
+        await asyncio.to_thread(telegram_bridge.push, text)
     return True
 
 
@@ -180,6 +189,54 @@ async def _maybe_event_nudge(now: datetime.datetime, announced: set) -> None:
             msg = f"Heads up — {title} starts in about {m} minute{'s' if m != 1 else ''}."
             if await speak_now(msg):
                 announced.add(key)
+
+
+async def _handle_telegram(update: dict) -> None:
+    msg = update.get("message") or {}
+    text = (msg.get("text") or "").strip()
+    chat = (msg.get("chat") or {}).get("id")
+    if not text or chat is None:
+        return
+    if not telegram_bridge.authorize(chat):
+        await asyncio.to_thread(
+            telegram_bridge.send_message, chat,
+            "Sorry — I only answer to my owner.",
+        )
+        return
+    # Share the Brain with voice, and serialise on the same lock so the two
+    # never run the model concurrently or scramble history.
+    async with busy:
+        if _ui_line_fn is not None:
+            await _ui_line_fn("you", text)
+        reply = await asyncio.to_thread(brain.ask, text)
+        if _ui_line_fn is not None:
+            await _ui_line_fn("deimos", reply)
+    await asyncio.to_thread(telegram_bridge.send_message, chat, reply)
+
+
+async def _telegram_loop() -> None:
+    """Long-poll Telegram and answer messages from the owner's phone."""
+    # Drain any backlog first so stale commands (sent while the server was down)
+    # don't execute on startup — advance the offset past them without handling.
+    offset = None
+    try:
+        backlog = await asyncio.to_thread(telegram_bridge.get_updates, None, 0)
+        if backlog:
+            offset = backlog[-1]["update_id"] + 1
+    except Exception:
+        pass
+    while True:
+        try:
+            updates = await asyncio.to_thread(telegram_bridge.get_updates, offset, 50)
+        except Exception:
+            await asyncio.sleep(5)
+            continue
+        for u in updates:
+            offset = u["update_id"] + 1
+            try:
+                await _handle_telegram(u)
+            except Exception:
+                pass
 
 
 async def _proactive_loop() -> None:

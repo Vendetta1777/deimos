@@ -23,6 +23,7 @@ voices/
 .spotify.json
 .anthropic.json
 .picovoice.json
+.telegram.json
 token.json
 client_secret*.json
 credentials.json

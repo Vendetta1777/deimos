@@ -197,5 +197,10 @@ class Config:
     # How often the proactive scheduler checks, in seconds.
     proactive_tick_seconds: int = 45
 
+    # --- Telegram bridge (talk to Deimos from your phone) ---
+    # Active only when ~/deimos/.telegram.json holds a bot token. Briefings and
+    # nudges are also pushed to the owner's chat.
+    telegram_enabled: bool = True
+
 
 CONFIG = Config()
