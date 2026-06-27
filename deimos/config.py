@@ -182,5 +182,20 @@ class Config:
     # default. Falls back to the default browser if this isn't installed.
     browser: str = "Google Chrome"
 
+    # --- Proactivity (Deimos speaks up on its own) ---
+    # Master switch for all unprompted speech.
+    proactive_enabled: bool = True
+    # Spoken morning briefing (date, weather, calendar, reminders) once a day at
+    # this local time (24h "HH:MM"). Also available on demand ("brief me").
+    briefing_enabled: bool = True
+    briefing_time: str = "08:00"
+    # Quiet hours — Deimos never speaks unprompted before/after these (24h).
+    proactive_quiet_before: int = 7    # no proactive speech before 7am
+    proactive_quiet_after: int = 22    # …or after 10pm
+    # Heads-up before a calendar event starts (minutes). 0 disables nudges.
+    event_nudge_lead_min: int = 10
+    # How often the proactive scheduler checks, in seconds.
+    proactive_tick_seconds: int = 45
+
 
 CONFIG = Config()

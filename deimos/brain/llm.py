@@ -109,6 +109,12 @@ _ACTION_Q = re.compile(
     r"mom|dad|[A-Z]\w+)|send .{1,40}(a )?(text|message|imessage)|message (her|him|"
     r"them|my |mom|dad)|^play |\bplay \w)\b", re.I,
 )
+# On-demand daily briefing — same content Deimos speaks each morning.
+_BRIEF_Q = re.compile(
+    r"\b(brief me|my (daily |morning )?briefing|(give|run) me (my|the) briefing|"
+    r"catch me up|good morning|morning briefing|daily briefing|what'?s my briefing|"
+    r"how('?s| is) my day looking)\b", re.I,
+)
 # Gate for background fact extraction: only run when the message is first-person.
 _PERSONAL = re.compile(r"\b(i|i'?m|i'?ve|i'?ll|my|me|mine|myself)\b", re.I)
 
@@ -130,6 +136,9 @@ def _route_intent(user_text: str) -> str | None:
     if _SYS_Q.search(t):
         res = registry.call("system_status", {})
         return res if res and "Error" not in res else None
+    if _BRIEF_Q.search(t):
+        from deimos.proactive import compose_briefing
+        return compose_briefing()
     if _MEM_FACTS_Q.search(t):
         facts = memory.all_facts()
         if not facts:

@@ -17,6 +17,7 @@ requests from overlapping, since Deimos handles one conversation at a time.
 Run with:  python server.py    then open http://localhost:8765
 """
 import asyncio
+import datetime
 import re
 import subprocess
 import threading
@@ -32,7 +33,11 @@ from fastapi.staticfiles import StaticFiles
 from deimos.audio.stt import SpeechToText
 from deimos.audio.tts import TextToSpeech
 from deimos.brain.llm import Brain
+from deimos.config import CONFIG
+from deimos.memory import memory
 from deimos.progress import progress
+from deimos.proactive import compose_briefing
+from deimos.tools import personal
 from deimos import wakeword
 import deimos.tools.builtin  # noqa: F401  registers the built-in tools
 import deimos.tools.memory_tools  # noqa: F401  registers remember/recall
@@ -45,7 +50,19 @@ import deimos.tools.code_tools  # noqa: F401  registers run_claude_code
 WEB_DIR = Path(__file__).parent / "web"
 PROJECTS_ROOT = Path("~/deimos-projects").expanduser()
 
-app = FastAPI()
+@asynccontextmanager
+async def _lifespan(app: "FastAPI"):
+    # Start the proactive scheduler (morning briefing, event nudges) for the life
+    # of the server; cancel it cleanly on shutdown.
+    task = asyncio.create_task(_proactive_loop()) if CONFIG.proactive_enabled else None
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+
+
+app = FastAPI(lifespan=_lifespan)
 
 
 @app.middleware("http")
@@ -98,6 +115,94 @@ async def _wake_paused():
     finally:
         if _wake is not None:
             _wake.resume()
+
+
+# --------------------------------------------------------------------------- #
+# Proactivity: Deimos speaks up on its own (morning briefing, event nudges).
+# The audio plays through the Mac's speakers via TTS; if the orb UI is open we
+# also reflect it there. Unprompted speech always yields to an active turn.
+# --------------------------------------------------------------------------- #
+_ui_state_fn = None   # set to the live connection's state() while one is open
+_ui_line_fn = None    # …and its line()
+_cal = {"poll": None, "events": []}  # throttled cache of today's events
+
+
+async def speak_now(text: str) -> bool:
+    """Speak an unprompted line, but only if nothing else is talking/listening.
+    Returns True if it actually spoke (so callers can mark it done)."""
+    if not text or busy.locked():
+        return False
+    async with busy, _wake_paused():
+        if _ui_line_fn is not None:
+            await _ui_line_fn("deimos", text)
+        if _ui_state_fn is not None:
+            await _ui_state_fn("speaking")
+        await asyncio.to_thread(tts.speak, text)
+        if _ui_state_fn is not None:
+            await _ui_state_fn("idle")
+    return True
+
+
+async def _maybe_briefing(now: datetime.datetime) -> None:
+    if not CONFIG.briefing_enabled:
+        return
+    try:
+        bh, bm = (int(x) for x in CONFIG.briefing_time.split(":"))
+    except Exception:
+        return
+    target = now.replace(hour=bh, minute=bm, second=0, microsecond=0)
+    # Fire once, in a 30-min window after the target (covers a sleeping Mac that
+    # wakes a little late), and never twice in a day.
+    if not (target <= now < target + datetime.timedelta(minutes=30)):
+        return
+    if memory.get_state("last_briefing_date") == now.date().isoformat():
+        return
+    text = await asyncio.to_thread(compose_briefing)
+    if await speak_now(text):
+        memory.set_state("last_briefing_date", now.date().isoformat())
+
+
+async def _maybe_event_nudge(now: datetime.datetime, announced: set) -> None:
+    lead = CONFIG.event_nudge_lead_min
+    if lead <= 0:
+        return
+    # The calendar read is slow, so refresh at most every 5 minutes.
+    if _cal["poll"] is None or (now - _cal["poll"]).total_seconds() >= 300:
+        _cal["events"] = await asyncio.to_thread(personal.todays_events_struct)
+        _cal["poll"] = now
+    for start, title in _cal["events"]:
+        key = f"{start.isoformat()}|{title}"
+        if key in announced:
+            continue
+        mins = (start - now).total_seconds() / 60.0
+        if 0 < mins <= lead:
+            m = round(mins)
+            msg = f"Heads up — {title} starts in about {m} minute{'s' if m != 1 else ''}."
+            if await speak_now(msg):
+                announced.add(key)
+
+
+async def _proactive_loop() -> None:
+    """Background scheduler for all unprompted speech."""
+    announced: set = set()
+    day = None
+    while True:
+        await asyncio.sleep(CONFIG.proactive_tick_seconds)
+        if not CONFIG.proactive_enabled:
+            continue
+        now = datetime.datetime.now()
+        if not (CONFIG.proactive_quiet_before <= now.hour < CONFIG.proactive_quiet_after):
+            continue
+        if day != now.date():        # new day → forget yesterday's nudges
+            announced.clear()
+            day = now.date()
+        try:
+            await _maybe_briefing(now)
+            await _maybe_event_nudge(now, announced)
+        except Exception:
+            pass
+
+
 
 
 @app.get("/")
@@ -210,8 +315,10 @@ async def ws(socket: WebSocket) -> None:
         current = asyncio.create_task(handle(action, text))
 
     # Let the wake word start a turn on this connection ("Hey Deimos").
-    global _trigger
+    global _trigger, _ui_state_fn, _ui_line_fn
     _trigger = lambda: launch("listen", "")
+    # Let proactive speech reflect in this connection's orb UI.
+    _ui_state_fn, _ui_line_fn = state, line
     _ensure_wakeword()
 
     try:
@@ -239,6 +346,7 @@ async def ws(socket: WebSocket) -> None:
         pass
     finally:
         _trigger = None  # this connection is gone; wake has nowhere to fire
+        _ui_state_fn = _ui_line_fn = None  # no UI to reflect proactive speech in
         # The browser closed mid-turn: stop any in-flight recording and cancel the
         # turn task, so it can't keep holding the global busy lock or the mic and
         # wedge the next connection's tap-to-talk. Resume the wake listener too.

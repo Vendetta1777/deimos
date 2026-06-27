@@ -197,6 +197,48 @@ def calendar_events(when: str = "today") -> str:
     return f"On your calendar {label}: " + "; ".join(items[:10]) + "."
 
 
+def todays_events_struct() -> list[tuple]:
+    """Return today's events as (start datetime, title) pairs for the proactive
+    nudger. Times are naive local. Returns [] on any failure (never raises)."""
+    import datetime as _dt
+
+    script = (
+        "set d0 to current date\n"
+        "set hours of d0 to 0\nset minutes of d0 to 0\nset seconds of d0 to 0\n"
+        "set d1 to d0 + (1 * days)\n"
+        'set out to ""\n'
+        'tell application "Calendar"\n'
+        "  repeat with c in calendars\n"
+        "    repeat with e in (every event of c whose start date ≥ d0 and start date < d1)\n"
+        "      set sd to start date of e\n"
+        '      set out to out & (year of sd) & "/" & (month of sd as integer) & "/" '
+        '& (day of sd) & "/" & (hours of sd) & "/" & (minutes of sd) & "|" '
+        "& (summary of e) & linefeed\n"
+        "    end repeat\n"
+        "  end repeat\n"
+        "end tell\n"
+        "return out"
+    )
+    try:
+        r = _osa(script, timeout=35)
+    except Exception:
+        return []
+    if r.returncode != 0:
+        return []
+    out = []
+    for ln in (r.stdout or "").splitlines():
+        ln = ln.strip()
+        if "|" not in ln:
+            continue
+        stamp, title = ln.split("|", 1)
+        try:
+            y, mo, da, hh, mm = (int(x) for x in stamp.split("/"))
+            out.append((_dt.datetime(y, mo, da, hh, mm), title.strip()))
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Messages (iMessage)
 # --------------------------------------------------------------------------- #
