@@ -166,6 +166,26 @@ def _osa_escape(s: str) -> str:
         "required": ["query"],
     },
 )
+@registry.tool(
+    name="play_my_music",
+    description=(
+        "Play the user's main/default playlist (set in config). Use for plain "
+        "'play music', 'play my music', 'put on some music', 'play my playlist' "
+        "— when NO specific song or artist is named. For a specific song use "
+        "play_music instead."
+    ),
+)
+def play_my_music() -> str:
+    from deimos.config import CONFIG
+    from deimos.tools import spotify
+    uri = (CONFIG.default_playlist or "").strip()
+    if not uri:
+        return "No default playlist is set yet."
+    if not _spotify_installed():
+        return "I couldn't find the Spotify app to play music."
+    return "Playing your playlist." if spotify._play_uri(uri) else "I couldn't start your playlist."
+
+
 def play_music(query: str, kind: str = "song") -> str:
     query = (query or "").strip()
     if not query:

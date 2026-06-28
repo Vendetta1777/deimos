@@ -193,6 +193,15 @@ class Config:
     # default. Falls back to the default browser if this isn't installed.
     browser: str = "Google Chrome"
 
+    # "play music" with no song plays this playlist (the user's main one). A
+    # Spotify URI; get it from a playlist via Share -> Copy Spotify URI.
+    default_playlist: str = "spotify:playlist:7coo8lXo68TL0mGwsG6xX6"
+    # Tabs on these sites get closed by "study mode" / "close my distractions".
+    distracting_sites: tuple = (
+        "youtube.com", "instagram.com", "tiktok.com", "twitter.com", "x.com",
+        "reddit.com", "netflix.com", "twitch.tv",
+    )
+
     # --- Proactivity (Deimos speaks up on its own) ---
     # Master switch for all unprompted speech.
     proactive_enabled: bool = True

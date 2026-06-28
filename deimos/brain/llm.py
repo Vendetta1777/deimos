@@ -111,9 +111,40 @@ _ACTION_Q = re.compile(
 )
 # Routines / scenes — one phrase runs a whole sequence.
 _ROUTINE_Q = re.compile(
-    r"\b(study mode|focus mode|wind ?down|lock in|deep work|start studying|"
-    r"good ?night|bedtime)\b", re.I,
+    r"\b(study mode|study for|focus mode|wind ?down|lock in|deep work|"
+    r"start studying|good ?night|bedtime)\b", re.I,
 )
+# Dev workspaces (most specific — checked before generic routines).
+_DEV_MONEY = re.compile(
+    r"\b(dev mode|work on|boot up|start|open|launch).{0,15}money ?path\b|"
+    r"\bmoney ?path dev\b", re.I,
+)
+_DEV_INVOICE = re.compile(
+    r"\b(dev mode|work on|boot up|start|open|launch).{0,15}invoice\b|\binvoice( app)? dev\b", re.I,
+)
+# Generic "play music" (no specific song) -> the user's default playlist.
+_PLAY_MUSIC_Q = re.compile(
+    r"\b(play (some |my )?music|put on (some )?music|play my playlist|"
+    r"play (the )?sax(ophone)? playlist|start my music)\b", re.I,
+)
+
+
+def _route_routine(t: str) -> str | None:
+    if _DEV_MONEY.search(t):
+        return registry.call("run_routine", {"name": "dev_money_path"})
+    if _DEV_INVOICE.search(t):
+        return registry.call("run_routine", {"name": "dev_invoice"})
+    m = _ROUTINE_Q.search(t)
+    if not m:
+        return None
+    mins = 0
+    mm = re.search(r"(\d+)\s*(hours?|hrs?|minutes?|mins?)", t, re.I)
+    if mm:
+        mins = int(mm.group(1))
+        if mm.group(2).lower().startswith(("hour", "hr")):
+            mins *= 60
+    name = "study" if "study" in m.group(0).lower() else m.group(0)
+    return registry.call("run_routine", {"name": name, "minutes": mins})
 # Common Mac-control commands -> a (regex, action) the router runs directly.
 _MAC_MAP = [
     (re.compile(r"\block (my |the )?(screen|mac|computer)\b", re.I), "lock_screen"),
@@ -212,8 +243,12 @@ def _route_intent(user_text: str) -> str | None:
     math = _route_math(t)
     if math is not None:
         return math
-    if _ROUTINE_Q.search(t):
-        return registry.call("run_routine", {"name": _ROUTINE_Q.search(t).group(0)})
+    if _PLAY_MUSIC_Q.search(t):
+        res = registry.call("play_my_music", {})
+        return res if res and "couldn't" not in res.lower() else None
+    routine = _route_routine(t)
+    if routine is not None:
+        return routine
     mac = _route_mac(t)
     if mac is not None:
         return mac

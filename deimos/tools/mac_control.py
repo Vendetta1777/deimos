@@ -121,6 +121,50 @@ def _status():
     return registry.call("system_status", {})
 
 
+def _close_distractions():
+    from deimos.config import CONFIG
+    if not Path("/Applications/Google Chrome.app").exists():
+        return "Chrome isn't installed."
+    sites = [s for s in CONFIG.distracting_sites if s]
+    if not sites:
+        return "No distracting sites are configured."
+    conds = " or ".join(f'u contains "{_esc(s)}"' for s in sites)
+    # Iterate tabs backwards so closing one doesn't shift the indexes we haven't
+    # checked. Never launch Chrome just to do this.
+    script = (
+        'if application "Google Chrome" is running then\n'
+        '  tell application "Google Chrome"\n'
+        '    set n to 0\n'
+        '    repeat with w in windows\n'
+        '      set i to (count of tabs of w)\n'
+        '      repeat while i is greater than 0\n'
+        '        set u to URL of tab i of w\n'
+        f'        if {conds} then\n'
+        '          close tab i of w\n'
+        '          set n to n + 1\n'
+        '        end if\n'
+        '        set i to i - 1\n'
+        '      end repeat\n'
+        '    end repeat\n'
+        '    return n\n'
+        '  end tell\n'
+        'else\n'
+        '  return -1\n'
+        'end if'
+    )
+    r = _osa(script, timeout=15)
+    if r.returncode != 0:
+        return "I couldn't reach Chrome to close tabs."
+    out = (r.stdout or "").strip()
+    if out == "-1":
+        return "Chrome isn't open."
+    try:
+        n = int(out)
+    except ValueError:
+        n = 0
+    return f"Closed {n} distracting tab{'s' if n != 1 else ''}." if n else "No distracting tabs were open."
+
+
 _ACTIONS = {
     "dark_mode": lambda v: _dark("toggle"),
     "dark_mode_on": lambda v: _dark("on"),
@@ -138,6 +182,7 @@ _ACTIONS = {
     "hide_others": lambda v: _hide_others(),
     "wifi_on": lambda v: _wifi(True),
     "wifi_off": lambda v: _wifi(False),
+    "close_distractions": lambda v: _close_distractions(),
     "status": lambda v: _status(),
 }
 
@@ -148,7 +193,8 @@ _ACTIONS = {
         "Control the Mac's system settings and state. The action is one of: "
         "dark_mode, dark_mode_on, dark_mode_off, mute, unmute, lock_screen, "
         "sleep, screensaver, keep_awake, allow_sleep, empty_trash, screenshot, "
-        "quit_app (set value to the app name), hide_others, wifi_on, wifi_off, "
+        "quit_app (set value to the app name), hide_others, close_distractions "
+        "(close distracting Chrome tabs), wifi_on, wifi_off, "
         "status. Use for 'lock my screen', 'go dark', 'mute', 'empty the trash', "
         "'keep my mac awake', 'close Discord', 'turn off wifi', etc."
     ),
