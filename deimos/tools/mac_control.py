@@ -100,8 +100,12 @@ def _quit_app(name: str):
 
 def _hide_others():
     # Hide every visible app except the frontmost — a reliable 'focus' move.
+    # Never hide Deimos's own orb window (process "jarvis-window"/"Deimos"), or
+    # it would hide itself mid-routine.
     _osa('tell application "System Events" to set visible of '
-         '(every process whose visible is true and frontmost is false) to false')
+         '(every process whose visible is true and frontmost is false '
+         'and name does not contain "jarvis" and name does not contain "eimos") '
+         'to false')
     return "Hid the other apps."
 
 
