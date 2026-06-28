@@ -176,6 +176,33 @@ def _route_mac(t: str) -> str | None:
     return None
 
 
+# Finance & markets.
+_MARKET_TODAY_Q = re.compile(
+    r"\b(what'?s? moved the market|how('?s| is| are| did) (the )?(market|markets|"
+    r"stocks)|market (today|update|summary)|how are stocks|how did stocks)\b", re.I,
+)
+_WATCHLIST_Q = re.compile(
+    r"\b(my (watch ?list|portfolio|stocks|holdings)|check my (stocks|watch ?list|"
+    r"portfolio)|how('?s| is| are) my (stocks|portfolio|watch ?list))\b", re.I,
+)
+_QUOTE_Q = re.compile(
+    r"\b(how'?s|how is|how are|what'?s|what is|price of|quote for|where'?s)\b", re.I,
+)
+
+
+def _route_finance(t: str) -> str | None:
+    if _MARKET_TODAY_Q.search(t):
+        return registry.call("market_today", {})
+    if _WATCHLIST_Q.search(t):
+        return registry.call("watchlist", {})
+    if _QUOTE_Q.search(t):
+        from deimos.tools.finance import find_symbols
+        syms = find_symbols(t)
+        if syms:
+            return registry.call("market_quote", {"symbols": ", ".join(syms)})
+    return None
+
+
 # Files & documents.
 _FIND_FILE_Q = re.compile(
     r"\b(find|locate|search for|look for|where(?:'?s| is))\b.{0,25}"
@@ -338,6 +365,9 @@ def _route_intent(user_text: str) -> str | None:
     files = _route_files(t)
     if files is not None:
         return files
+    finance = _route_finance(t)
+    if finance is not None:
+        return finance
     if _MEM_FACTS_Q.search(t):
         facts = memory.all_facts()
         if not facts:

@@ -109,6 +109,11 @@ class Config:
         "To find files use find_file ('find my file about X'); to summarize a "
         "document out loud use summarize_doc ('summarize X', 'what's in the Y "
         "pdf') — it reads PDFs, Word docs, and text. "
+        "For live finance use these (never answer prices from memory): "
+        "market_quote for a stock/crypto/index ('how's Apple', 'what's Bitcoin "
+        "at'), market_today for the overall market, watchlist for the user's "
+        "tickers. For economic figures (inflation, interest rates, GDP, "
+        "unemployment) use web_search to get current numbers. "
         "You manage the user's day through their Mac's own apps. To set a "
         "reminder use add_reminder (pass what and, if given, when); to read their "
         "reminders use list_reminders. To add a calendar event use add_event "
@@ -203,6 +208,12 @@ class Config:
     # "play music" with no song plays this playlist (the user's main one). A
     # Spotify URI; get it from a playlist via Share -> Copy Spotify URI.
     default_playlist: str = "spotify:playlist:7coo8lXo68TL0mGwsG6xX6"
+    # Tickers Deimos reports for "how's my watchlist" and in the briefing.
+    # Yahoo symbols: stocks (AAPL), indices (^GSPC), crypto (BTC-USD).
+    watchlist: tuple = ("^GSPC", "AAPL", "NVDA", "BTC-USD")
+    # Include a one-line market summary in the morning briefing.
+    briefing_markets: bool = True
+
     # Tabs on these sites get closed by "study mode" / "close my distractions".
     distracting_sites: tuple = (
         "youtube.com", "instagram.com", "tiktok.com", "twitter.com", "x.com",

@@ -12,6 +12,7 @@ server.py where the TTS engine and the busy/ wake-word locks are.
 import datetime
 import re
 
+from deimos.config import CONFIG
 from deimos.memory import memory
 from deimos.tools.registry import registry
 
@@ -76,6 +77,17 @@ def compose_briefing(greet: bool = True) -> str:
             parts.append(_clean(cal) + ".")
     except Exception:
         pass
+
+    # Markets — a one-line read on the S&P (the user's a finance person).
+    if getattr(CONFIG, "briefing_markets", False):
+        try:
+            from deimos.tools import finance
+            q = finance._quote("^GSPC")
+            if q and q.get("change") is not None:
+                arrow = "up" if q["change"] >= 0 else "down"
+                parts.append(f"The S&P 500 is {arrow} {abs(q['change']):.1f} percent.")
+        except Exception:
+            pass
 
     # Reminders — summarise (count, not the whole list, to keep it brief).
     try:

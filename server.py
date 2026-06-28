@@ -50,6 +50,7 @@ import deimos.tools.personal  # noqa: F401  registers reminders/calendar/message
 import deimos.tools.mac_control  # noqa: F401  registers mac_control
 import deimos.tools.routines  # noqa: F401  registers run_routine
 import deimos.tools.files  # noqa: F401  registers find_file/summarize_doc
+import deimos.tools.finance  # noqa: F401  registers market_quote/market_today/watchlist
 import deimos.tools.code_tools  # noqa: F401  registers run_claude_code
 
 WEB_DIR = Path(__file__).parent / "web"
