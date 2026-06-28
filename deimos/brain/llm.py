@@ -109,6 +109,40 @@ _ACTION_Q = re.compile(
     r"mom|dad|[A-Z]\w+)|send .{1,40}(a )?(text|message|imessage)|message (her|him|"
     r"them|my |mom|dad)|^play |\bplay \w)\b", re.I,
 )
+# Routines / scenes — one phrase runs a whole sequence.
+_ROUTINE_Q = re.compile(
+    r"\b(study mode|focus mode|wind ?down|lock in|deep work|start studying|"
+    r"good ?night|bedtime)\b", re.I,
+)
+# Common Mac-control commands -> a (regex, action) the router runs directly.
+_MAC_MAP = [
+    (re.compile(r"\block (my |the )?(screen|mac|computer)\b", re.I), "lock_screen"),
+    (re.compile(r"\b(go to sleep|sleep (my |the )?(mac|computer)|"
+                r"put (the |my )?(mac|computer|laptop) to sleep)\b", re.I), "sleep"),
+    (re.compile(r"\b(dark mode|go dark|night mode)\b", re.I), "dark_mode_on"),
+    (re.compile(r"\b(light mode|go light|day mode)\b", re.I), "dark_mode_off"),
+    (re.compile(r"\bempty (the )?(trash|bin)\b", re.I), "empty_trash"),
+    (re.compile(r"\b((take|grab|capture) a screenshot|screenshot)\b", re.I), "screenshot"),
+    (re.compile(r"\b(keep (my |the )?(mac|computer|screen)? ?awake|caffeinate)\b", re.I), "keep_awake"),
+    (re.compile(r"\bunmute\b", re.I), "unmute"),
+    (re.compile(r"\bmute( the| my)?( sound| volume| mac)?\b", re.I), "mute"),
+    (re.compile(r"\bturn off (the )?wi-?fi\b", re.I), "wifi_off"),
+    (re.compile(r"\bturn on (the )?wi-?fi\b", re.I), "wifi_on"),
+    (re.compile(r"\b(hide (the )?other (apps|windows)|hide everything)\b", re.I), "hide_others"),
+]
+_QUIT_APP = re.compile(r"\b(?:quit|close|kill)(?: the)?(?: app)? ([A-Z][\w.]+)", re.I)
+
+
+def _route_mac(t: str) -> str | None:
+    for rx, action in _MAC_MAP:
+        if rx.search(t):
+            res = registry.call("mac_control", {"action": action})
+            return res if res and "Error" not in res else None
+    m = _QUIT_APP.search(t)
+    if m and m.group(1).lower() not in ("the", "this", "that", "it", "app"):
+        res = registry.call("mac_control", {"action": "quit_app", "value": m.group(1)})
+        return res if res and "Error" not in res else None
+    return None
 # On-demand daily briefing — same content Deimos speaks each morning.
 _BRIEF_Q = re.compile(
     r"\b(brief me|my (daily |morning )?briefing|(give|run) me (my|the) briefing|"
@@ -178,6 +212,11 @@ def _route_intent(user_text: str) -> str | None:
     math = _route_math(t)
     if math is not None:
         return math
+    if _ROUTINE_Q.search(t):
+        return registry.call("run_routine", {"name": _ROUTINE_Q.search(t).group(0)})
+    mac = _route_mac(t)
+    if mac is not None:
+        return mac
     if _MEM_FACTS_Q.search(t):
         facts = memory.all_facts()
         if not facts:

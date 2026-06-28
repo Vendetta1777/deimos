@@ -15,6 +15,8 @@ import deimos.tools.memory_tools  # noqa: F401  registers remember/recall
 import deimos.tools.skills  # noqa: F401  registers web/weather/system/notes/etc.
 import deimos.tools.system_tools  # noqa: F401  registers open_url/media/volume/run_command
 import deimos.tools.personal  # noqa: F401  registers reminders/calendar/messages
+import deimos.tools.mac_control  # noqa: F401  registers mac_control
+import deimos.tools.routines  # noqa: F401  registers run_routine
 import deimos.tools.code_tools  # noqa: F401  registers run_claude_code
 
 
