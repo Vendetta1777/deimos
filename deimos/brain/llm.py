@@ -174,6 +174,48 @@ def _route_mac(t: str) -> str | None:
         res = registry.call("mac_control", {"action": "quit_app", "value": m.group(1)})
         return res if res and "Error" not in res else None
     return None
+
+
+# Files & documents.
+_FIND_FILE_Q = re.compile(
+    r"\b(find|locate|search for|look for|where(?:'?s| is))\b.{0,25}"
+    r"\b(file|document|pdf|doc|note|paper|spreadsheet|presentation|essay|folder|"
+    r"readme|screenshot|photo|image)\b",
+    re.I,
+)
+_SUMM_Q = re.compile(r"\b(summari[sz]e|give me (the )?gist of|tl;?dr)\b", re.I)
+_SUMM_Q2 = re.compile(
+    r"\bwhat(?:'?s| is| does)\b.{0,30}\b(document|pdf|doc|file|paper|essay)\b", re.I,
+)
+
+
+def _file_query(t: str) -> str:
+    s = (t or "").strip().rstrip("?.! ")
+    s = re.sub(r"^(hey\s+)?(can you\s+|could you\s+|please\s+)?", "", s, flags=re.I)
+    s = re.sub(r"^(find|locate|search for|look for|where(?:'?s| is)|summari[sz]e|"
+               r"give me( the)? gist of|tl;?dr|what(?:'?s| is| does)|open|read)\s+",
+               "", s, flags=re.I)
+    # Strip pure filler first; keep type words (essay/pdf) in case they ARE the subject.
+    base = re.sub(r"\b(me|my|the|a|an|that|this|about|called|named|titled|of|gist|"
+                  r"for|on|in|say|says|contain|contains)\b", " ", s, flags=re.I)
+    base = re.sub(r"\s+", " ", base).strip()
+    # Then drop generic container words — but only if something else remains.
+    full = re.sub(r"\b(file|document|pdf|doc|note|paper|essay|spreadsheet|"
+                  r"presentation|folder|readme)\b", " ", base, flags=re.I)
+    full = re.sub(r"\s+", " ", full).strip()
+    return full or base
+
+
+def _route_files(t: str) -> str | None:
+    if _SUMM_Q.search(t) or _SUMM_Q2.search(t):
+        q = _file_query(t)
+        if q:
+            return registry.call("summarize_doc", {"query": q})
+    if _FIND_FILE_Q.search(t):
+        q = _file_query(t)
+        if q:
+            return registry.call("find_file", {"query": q})
+    return None
 # Watchers — "tell me when X happens" background monitors.
 _NOTIFY = re.compile(
     r"\b(tell me|let me know|ping me|notify me|alert me|remind me|watch for|"
@@ -293,6 +335,9 @@ def _route_intent(user_text: str) -> str | None:
     mac = _route_mac(t)
     if mac is not None:
         return mac
+    files = _route_files(t)
+    if files is not None:
+        return files
     if _MEM_FACTS_Q.search(t):
         facts = memory.all_facts()
         if not facts:

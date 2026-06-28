@@ -6,3 +6,4 @@ fastapi>=0.110
 uvicorn>=0.29
 websockets>=12.0
 dateparser>=1.2          # natural-language times for reminders/calendar
+pypdf>=4.0               # read PDF text for summarize_doc
