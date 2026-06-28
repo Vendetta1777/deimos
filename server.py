@@ -39,6 +39,7 @@ from deimos.progress import progress
 from deimos.proactive import compose_briefing
 from deimos.tools import personal
 from deimos import telegram_bridge
+from deimos import watchers
 from deimos import wakeword
 import deimos.tools.builtin  # noqa: F401  registers the built-in tools
 import deimos.tools.memory_tools  # noqa: F401  registers remember/recall
@@ -57,7 +58,7 @@ PROJECTS_ROOT = Path("~/deimos-projects").expanduser()
 async def _lifespan(app: "FastAPI"):
     # Start the proactive scheduler (morning briefing, event nudges) for the life
     # of the server; cancel it cleanly on shutdown.
-    tasks = []
+    tasks = [asyncio.create_task(_watcher_loop())]
     if CONFIG.proactive_enabled:
         tasks.append(asyncio.create_task(_proactive_loop()))
     if CONFIG.telegram_enabled and telegram_bridge.is_configured():
@@ -270,6 +271,23 @@ async def _telegram_loop() -> None:
                 await _handle_telegram(u)
             except Exception:
                 pass
+
+
+async def _watcher_loop() -> None:
+    """Poll background watchers and announce any that fire. Held-back messages
+    (spoken while busy) are retried on the next tick instead of being lost."""
+    pending: list = []
+    while True:
+        await asyncio.sleep(CONFIG.watcher_tick_seconds)
+        try:
+            pending.extend(watchers.manager.poll())
+        except Exception:
+            pass
+        while pending:
+            if await speak_now(pending[0]):
+                pending.pop(0)
+            else:
+                break  # something's talking; retry next tick
 
 
 async def _proactive_loop() -> None:

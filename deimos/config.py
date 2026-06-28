@@ -102,6 +102,10 @@ class Config:
         "or Wi-Fi on/off. For multi-step 'scenes' use run_routine: 'study mode', "
         "'focus mode', 'wind down'. These are ACTIONS — call the tool, don't just "
         "describe it. "
+        "To watch for something and speak up later, use add_watcher (kind: "
+        "download, disk, battery, idle) — for 'tell me when my download "
+        "finishes', 'let me know when the battery's full', 'tell me when my mac "
+        "is free'. "
         "You manage the user's day through their Mac's own apps. To set a "
         "reminder use add_reminder (pass what and, if given, when); to read their "
         "reminders use list_reminders. To add a calendar event use add_event "
@@ -216,6 +220,8 @@ class Config:
     event_nudge_lead_min: int = 10
     # How often the proactive scheduler checks, in seconds.
     proactive_tick_seconds: int = 45
+    # How often background watchers ("tell me when X happens") are polled.
+    watcher_tick_seconds: int = 8
 
     # --- Telegram bridge (talk to Deimos from your phone) ---
     # Active only when ~/deimos/.telegram.json holds a bot token. Briefings and

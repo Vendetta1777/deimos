@@ -17,6 +17,7 @@ import deimos.tools.system_tools  # noqa: F401  registers open_url/media/volume/
 import deimos.tools.personal  # noqa: F401  registers reminders/calendar/messages
 import deimos.tools.mac_control  # noqa: F401  registers mac_control
 import deimos.tools.routines  # noqa: F401  registers run_routine
+import deimos.watchers  # noqa: F401  registers add_watcher/list_watchers/clear_watchers
 import deimos.tools.code_tools  # noqa: F401  registers run_claude_code
 
 

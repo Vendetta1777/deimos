@@ -174,6 +174,42 @@ def _route_mac(t: str) -> str | None:
         res = registry.call("mac_control", {"action": "quit_app", "value": m.group(1)})
         return res if res and "Error" not in res else None
     return None
+# Watchers — "tell me when X happens" background monitors.
+_NOTIFY = re.compile(
+    r"\b(tell me|let me know|ping me|notify me|alert me|remind me|watch for|"
+    r"keep an eye)\b", re.I,
+)
+_WATCH_LIST = re.compile(
+    r"\bwhat are you (watching|monitoring)\b|\bwhat('?s| is) being watched\b|"
+    r"\b(list|show) (my )?watchers\b", re.I,
+)
+_WATCH_CLEAR = re.compile(
+    r"\b(stop|cancel|clear) (watching|monitoring|all |the )?watchers?\b|"
+    r"\bstop (watching|monitoring)\b", re.I,
+)
+
+
+def _route_watch(t: str) -> str | None:
+    low = (t or "").lower()
+    if _WATCH_LIST.search(t):
+        return registry.call("list_watchers", {})
+    if _WATCH_CLEAR.search(t):
+        return registry.call("clear_watchers", {})
+    if not (_NOTIFY.search(t) or "when " in low):
+        return None
+    if "download" in low and re.search(r"finish|done|complete|ready|over", low):
+        return registry.call("add_watcher", {"kind": "download"})
+    if re.search(r"\b(disk|storage|space)\b", low) and re.search(r"low|running out|full|out of", low):
+        return registry.call("add_watcher", {"kind": "disk"})
+    if "battery" in low:
+        m = re.search(r"(\d{1,3})\s*%?", low)
+        return registry.call("add_watcher", {"kind": "battery", "value": m.group(1) if m else "100"})
+    if re.search(r"\b(mac|computer|cpu|laptop)\b.*\b(free|idle|done|not busy|finish|settle)", low) \
+            or re.search(r"when (it'?s|its) (done|free|finished)", low):
+        return registry.call("add_watcher", {"kind": "idle"})
+    return None
+
+
 # On-demand daily briefing — same content Deimos speaks each morning.
 _BRIEF_Q = re.compile(
     r"\b(brief me|my (daily |morning )?briefing|(give|run) me (my|the) briefing|"
@@ -226,6 +262,11 @@ def _route_intent(user_text: str) -> str | None:
     let them choose for these. Returns a speakable reply, or None to let the
     model handle it normally."""
     t = user_text or ""
+    # Watchers first: "tell me when my battery is full" must not be swallowed by
+    # the battery/system route below.
+    watch = _route_watch(t)
+    if watch is not None:
+        return watch
     if _TIME_Q.search(t):
         res = registry.call("get_current_time", {})
         return f"It's {res}." if res and "Error" not in res else None
