@@ -132,6 +132,29 @@ class TextToSpeech:
         self.piper_ready = self.piper_voice is not None or (
             bool(self.piper_bin) and model.exists()
         )
+        # sox lets us pitch the voice down for a deeper tone (Deimos). Optional:
+        # if it's missing we just play the un-shifted voice.
+        self._sox = shutil.which("sox")
+        if not self._sox and Path("/opt/homebrew/bin/sox").exists():
+            self._sox = "/opt/homebrew/bin/sox"
+
+    def _deepen(self, wav_path: str) -> str:
+        """Pitch the rendered WAV down by CONFIG.piper_pitch_cents (normalized to
+        avoid clipping). Returns a new path, or the original if unavailable."""
+        cents = getattr(CONFIG, "piper_pitch_cents", 0)
+        if not cents or not self._sox:
+            return wav_path
+        dst = wav_path[:-4] + "_deep.wav"
+        try:
+            r = subprocess.run(
+                [self._sox, wav_path, dst, "gain", "-n", "-3", "pitch", str(cents)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+            )
+            if r.returncode == 0 and Path(dst).exists():
+                return dst
+        except Exception:
+            pass
+        return wav_path
 
     def speak(self, text: str) -> None:
         text = _clean_for_speech(text)
@@ -161,12 +184,14 @@ class TextToSpeech:
             cfg = SynthesisConfig(length_scale=CONFIG.piper_length_scale)
             with wave.open(wav_path, "wb") as wf:
                 self.piper_voice.synthesize_wav(text, wf, syn_config=cfg)
-            subprocess.run(["afplay", wav_path], check=False)
+            play_path = self._deepen(wav_path)
+            subprocess.run(["afplay", play_path], check=False)
         finally:
-            try:
-                os.remove(wav_path)
-            except OSError:
-                pass
+            for p in {wav_path, wav_path[:-4] + "_deep.wav"}:
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
 
     def _speak_piper_cli(self, text: str) -> None:
         wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name

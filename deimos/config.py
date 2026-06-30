@@ -176,17 +176,16 @@ class Config:
     tts_voice: str = "Daniel"        # last-resort fallback; run `say -v ?` to list
     tts_rate: int = 178              # words per minute (calmer pace)
 
-    # Piper: cinematic local neural voice. If this model file exists and the
-    # `piper` command is installed, Deimos uses it (see README). en_US-ryan-high
-    # is a smooth, deep, high-quality US voice.
-    piper_model: str = "/Users/shrinivas46608/deimos/voices/en_US-ryan-high.onnx"
-    # Fallback option (deep British, medium quality):
-    #   "~/deimos/voices/en_GB-alan-medium.onnx"
-    # Pacing makes Piper sound more human: >1.0 is slower/calmer; sentence
-    # silence adds a natural pause between sentences. The high-quality model
-    # sounds natural at full speed, so 1.0.
-    piper_length_scale: float = 1.0
+    # Piper: cinematic local neural voice. en_US-norman is a deep US male; we
+    # pitch it down further (below) for the "Deimos" tone. Other options sit in
+    # voices/ (alan = deep British, ryan = lighter US).
+    piper_model: str = "/Users/shrinivas46608/deimos/voices/en_US-norman-medium.onnx"
+    # Pacing: >1.0 is slower/calmer; sentence silence pauses between sentences.
+    piper_length_scale: float = 1.06
     piper_sentence_silence: float = 0.3
+    # Pitch the voice down by this many cents (100 = 1 semitone) via sox for a
+    # deeper tone. 0 disables. -400 = down 4 semitones (Deimos). Needs sox.
+    piper_pitch_cents: int = -400
 
     # --- Claude Code tool (autonomous coding by voice) ---
     # Folder that project names are resolved against (e.g. "trading-game").

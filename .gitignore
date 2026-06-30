@@ -30,3 +30,4 @@ credentials.json
 *.db
 
 # Deimos runtime data lives in ~/.deimos (outside the repo) — never commit it.
+voice-samples/
