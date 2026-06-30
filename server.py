@@ -325,6 +325,12 @@ async def mini() -> FileResponse:
     return FileResponse(WEB_DIR / "mini.html")
 
 
+@app.get("/xr")
+async def xr() -> FileResponse:
+    """Deimos XR — the WebXR mixed-reality view, loaded in the Quest browser."""
+    return FileResponse(WEB_DIR / "xr.html")
+
+
 @app.post("/talk")
 async def talk() -> JSONResponse:
     """Push-to-talk trigger: start a voice turn now. Bind a global keyboard
@@ -662,4 +668,16 @@ app.mount("/", StaticFiles(directory=str(WEB_DIR)), name="static")
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8765)
+    # XR mode (DEIMOS_XR=1): serve over HTTPS on the LAN so the Quest 3 browser
+    # can reach it and WebXR (which requires a secure context) works. Otherwise
+    # plain HTTP on localhost for the Mac orb.
+    import os
+    cert = Path.home() / ".deimos-xr" / "cert.pem"
+    key = Path.home() / ".deimos-xr" / "key.pem"
+    if os.environ.get("DEIMOS_XR") and cert.exists() and key.exists():
+        print("Deimos XR: https://0.0.0.0:8765  →  on the Quest open "
+              "https://<your-mac-ip>:8765/xr")
+        uvicorn.run(app, host="0.0.0.0", port=8765,
+                    ssl_certfile=str(cert), ssl_keyfile=str(key))
+    else:
+        uvicorn.run(app, host="127.0.0.1", port=8765)

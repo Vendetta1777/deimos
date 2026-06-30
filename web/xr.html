@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Deimos XR</title>
+<style>
+  * { margin: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, sans-serif; background: #04070d; color: #cfeefe; overflow: hidden; }
+  #overlay { position: fixed; inset: 0; display: flex; flex-direction: column;
+             align-items: center; justify-content: center; gap: 18px; text-align: center; padding: 24px; }
+  h1 { font-weight: 600; letter-spacing: .14em; font-size: 22px; color: #7fdfff; }
+  p { color: #6f8aa0; max-width: 460px; line-height: 1.5; }
+  #status { font-size: 13px; color: #4f6a80; }
+  button#enter { margin-top: 10px; padding: 14px 26px; border: 1px solid #2bd1ff66;
+    background: #0b2030; color: #aef0ff; border-radius: 999px; font-size: 16px; letter-spacing: .05em; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<div id="overlay">
+  <h1>DEIMOS&nbsp;·&nbsp;XR</h1>
+  <p>Put on your headset and tap <b>Enter Deimos</b>. Deimos will appear floating in your room.
+     Pull a controller trigger (or pinch) to talk.</p>
+  <div id="status">connecting to the brain…</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { ARButton } from 'three/addons/webxr/ARButton.js';
+
+const statusEl = document.getElementById('status');
+const overlay = document.getElementById('overlay');
+
+// ---------- renderer / scene (passthrough = transparent clear) ----------
+const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+renderer.setClearAlpha(0);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 50);
+scene.add(new THREE.HemisphereLight(0x88ccff, 0x080820, 1.2));
+const key = new THREE.PointLight(0x33d6ff, 2, 10); key.position.set(0, 2, 1); scene.add(key);
+
+// A rig we place ~1.2 m in front of the user, at eye height.
+const rig = new THREE.Group();
+rig.position.set(0, 1.4, -1.2);
+scene.add(rig);
+
+// ---------- the orb ----------
+const COLORS = { idle: 0x2bd1ff, listening: 0x49ff8e, thinking: 0xffc24a, speaking: 0x7a9bff };
+const core = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.12, 4),
+  new THREE.MeshStandardMaterial({ color: 0x0a2233, emissive: COLORS.idle,
+    emissiveIntensity: 1.6, roughness: 0.3, metalness: 0.6 })
+);
+rig.add(core);
+const glow = new THREE.Mesh(
+  new THREE.SphereGeometry(0.2, 32, 32),
+  new THREE.MeshBasicMaterial({ color: COLORS.idle, transparent: true, opacity: 0.12,
+    blending: THREE.AdditiveBlending, side: THREE.BackSide })
+);
+rig.add(glow);
+const rings = [];
+for (let i = 0; i < 2; i++) {
+  const r = new THREE.Mesh(
+    new THREE.TorusGeometry(0.22 + i * 0.05, 0.004, 12, 80),
+    new THREE.MeshBasicMaterial({ color: COLORS.idle, transparent: true, opacity: 0.55 })
+  );
+  r.rotation.x = Math.PI / 2 + i * 0.5;
+  rig.add(r); rings.push(r);
+}
+
+// ---------- text panels (canvas textures) ----------
+function makePanel(w, h, x, y) {
+  const cv = document.createElement('canvas');
+  cv.width = w * 256; cv.height = h * 256;
+  const tex = new THREE.CanvasTexture(cv);
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.96 })
+  );
+  mesh.position.set(x, y, 0);
+  rig.add(mesh);
+  return { mesh, cv, ctx: cv.getContext('2d'), tex };
+}
+function drawPanel(p, title, lines, accent = '#2bd1ff') {
+  const { ctx, cv } = p, W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(6,16,26,0.72)'; roundRect(ctx, 0, 0, W, H, 26); ctx.fill();
+  ctx.strokeStyle = accent + '88'; ctx.lineWidth = 3; roundRect(ctx, 2, 2, W - 4, H - 4, 26); ctx.stroke();
+  ctx.fillStyle = accent; ctx.font = '600 34px -apple-system, sans-serif';
+  ctx.fillText(title.toUpperCase(), 34, 60);
+  ctx.fillStyle = '#dff2ff'; ctx.font = '30px -apple-system, sans-serif';
+  lines.forEach((ln, i) => ctx.fillText(ln, 34, 120 + i * 46));
+  p.tex.needsUpdate = true;
+}
+function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+const convoPanel = makePanel(0.7, 0.5, -0.62, 0.0);
+const dataPanel = makePanel(0.6, 0.5, 0.6, 0.0);
+let convo = [];
+function showConvo() {
+  drawPanel(convoPanel, 'Deimos', convo.slice(-6), accentHex());
+}
+drawPanel(convoPanel, 'Deimos', ['standing by…']);
+drawPanel(dataPanel, 'Status', ['loading…']);
+
+// ---------- live data (weather / markets) ----------
+async function refreshData() {
+  const lines = [new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })];
+  try { const w = await (await fetch('/api/weather')).json();
+    if (w && (w.temp || w.condition)) lines.push(`${w.temp} ${w.condition}`.trim().slice(0, 30)); } catch {}
+  try { const s = await (await fetch('/api/stocks?symbols=^GSPC,AAPL,BTC-USD')).json();
+    (s.stocks || []).forEach(r => { if (r.price != null)
+      lines.push(`${r.symbol}  ${r.change >= 0 ? '▲' : '▼'} ${Math.abs(r.change || 0).toFixed(1)}%`); });
+  } catch {}
+  drawPanel(dataPanel, 'Status', lines, '#49ff8e');
+}
+refreshData(); setInterval(refreshData, 15000);
+
+// ---------- websocket to the brain ----------
+let state = 'idle';
+function accentHex() { return '#' + COLORS[state].toString(16).padStart(6, '0'); }
+let ws;
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.onopen = () => statusEl.textContent = 'connected — enter to begin';
+  ws.onclose = () => { statusEl.textContent = 'reconnecting…'; setTimeout(connect, 1500); };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'state') { state = m.state || 'idle'; }
+    else if (m.type === 'transcript') {
+      convo.push((m.role === 'you' ? '› ' : '◆ ') + m.text); showConvo();
+    }
+  };
+}
+connect();
+
+// ---------- talk: controller trigger / pinch ----------
+function talk() { if (ws && ws.readyState === 1 && state === 'idle') ws.send(JSON.stringify({ action: 'listen' })); }
+for (let i = 0; i < 2; i++) {
+  const c = renderer.xr.getController(i);
+  c.addEventListener('selectstart', talk);
+  scene.add(c);
+}
+
+// ---------- enter AR ----------
+const btn = ARButton.createButton(renderer, {
+  optionalFeatures: ['local-floor', 'hand-tracking', 'dom-overlay'],
+  domOverlay: { root: overlay },
+});
+btn.id = 'enter'; btn.textContent = 'Enter Deimos';
+overlay.appendChild(btn);
+renderer.xr.addEventListener('sessionstart', () => { overlay.style.display = 'none'; });
+renderer.xr.addEventListener('sessionend', () => { overlay.style.display = 'flex'; });
+
+// ---------- animate ----------
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const t = clock.getElapsedTime();
+  const col = new THREE.Color(COLORS[state]);
+  core.material.emissive.lerp(col, 0.1);
+  glow.material.color.lerp(col, 0.1);
+  rings.forEach((r, i) => { r.material.color.lerp(col, 0.1); r.rotation.z += 0.004 * (i + 1); });
+  const amp = state === 'speaking' ? 0.06 : state === 'listening' ? 0.04 : 0.02;
+  const s = 1 + Math.sin(t * (state === 'speaking' ? 7 : 2.2)) * amp;
+  core.scale.setScalar(s); glow.scale.setScalar(1 + (s - 1) * 0.6);
+  // panels gently face the user
+  [convoPanel.mesh, dataPanel.mesh].forEach(p => p.lookAt(camera.getWorldPosition(new THREE.Vector3())));
+  renderer.render(scene, camera);
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
