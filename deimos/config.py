@@ -184,8 +184,8 @@ class Config:
     piper_length_scale: float = 1.06
     piper_sentence_silence: float = 0.3
     # Pitch the voice down by this many cents (100 = 1 semitone) via sox for a
-    # deeper tone. 0 disables. -400 = down 4 semitones (Deimos). Needs sox.
-    piper_pitch_cents: int = -400
+    # deeper tone. 0 disables. -180 = down 1.8 semitones (Deimos). Needs sox.
+    piper_pitch_cents: int = -180
 
     # --- Claude Code tool (autonomous coding by voice) ---
     # Folder that project names are resolved against (e.g. "trading-game").
